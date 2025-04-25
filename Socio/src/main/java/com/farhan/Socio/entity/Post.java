@@ -44,5 +44,10 @@ public class Post {
 
     @UpdateTimestamp
     private LocalDateTime updatedAt;
+
+    @ManyToOne
+    @JoinColumn(name = "group_id")
+    private Group group; 
+
 }
 

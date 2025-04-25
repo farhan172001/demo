@@ -5,8 +5,11 @@ import com.farhan.Socio.dto.FollowRequestDTO;
 import com.farhan.Socio.dto.LikeRequestDTO;
 import com.farhan.Socio.dto.PostRequestDTO;
 import com.farhan.Socio.entity.Post;
+import com.farhan.Socio.entity.PostStatsProjection;
+import com.farhan.Socio.repository.PostRepository;
 import com.farhan.Socio.service.PostService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,7 +19,10 @@ import java.util.List;
 @RequestMapping("/posts")
 @RequiredArgsConstructor
 public class PostController {
+    @Autowired
     private final PostService postService;
+    @Autowired
+    private final PostRepository postRepository;
 
     @PostMapping("/")
     public ResponseEntity<Post> createPost(@RequestBody PostRequestDTO post) {
@@ -73,5 +79,10 @@ public class PostController {
     @PutMapping("/unlike")
     public ResponseEntity<String> unlikePost(@RequestBody LikeRequestDTO dto) {
         return postService.unlikePost(dto);
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<List<PostStatsProjection>> getAllPostStats() {
+        return ResponseEntity.ok(postRepository.getAllPostStats());
     }
 }

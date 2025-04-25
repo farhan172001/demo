@@ -5,22 +5,18 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="42de7d4d-cdef-4bed-a645-ab567401fb7c" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/compiler.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/compiler.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/.gitattributes" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Socio/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/pom.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/config/AppConfig.java" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/controller/UserController.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/controller/UserController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/dto/SignInDTO.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/dto/SignInDTO.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Comment.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Comment.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Follow.java" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Group.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Group.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Like.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/controller/PostController.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/controller/PostController.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Post.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Post.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/User.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/User.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/repository/PostRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/repository/PostRepository.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/service/UserService.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/service/UserService.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Socio/src/main/resources/application.properties" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/resources/application.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/target/classes/application.properties" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/application.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/controller/PostController.class" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/controller/PostController.class" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/entity/Post.class" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/entity/Post.class" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/repository/PostRepository.class" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/repository/PostRepository.class" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/service/UserService.class" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/service/UserService.class" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -62,16 +58,19 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Application.SocioApplication.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;E:/Socio&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;reference.projectsettings.compiler.annotationProcessors&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Application.SocioApplication.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "master",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "E:/Socio",
+    "project.structure.last.edited": "Project",
+    "project.structure.proportion": "0.0",
+    "project.structure.side.proportion": "0.0",
+    "settings.editor.selected.configurable": "reference.projectsettings.compiler.annotationProcessors"
   }
-}</component>
+}]]></component>
   <component name="RunManager">
     <configuration name="SocioApplication" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
       <option name="MAIN_CLASS_NAME" value="com.farhan.Socio.SocioApplication" />
@@ -101,6 +100,29 @@
       <option name="presentableId" value="Default" />
       <updated>1745473050543</updated>
     </task>
+    <task id="LOCAL-00001" summary="f">
+      <option name="closed" value="true" />
+      <created>1745574756618</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1745574756618</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="f" />
+    <option name="LAST_COMMIT_MESSAGE" value="f" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <breakpoint enabled="true" type="java-exception">
+          <properties class="io.jsonwebtoken.io.DecodingException" package="io.jsonwebtoken.io" />
+          <option name="timeStamp" value="1" />
+        </breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>

@@ -12,6 +12,7 @@ import com.farhan.Socio.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -22,6 +23,8 @@ public class UserService {
     private final UserRepository userRepository;
     @Autowired
     private final UserRelationRepository userRelationRepository;
+    @Autowired
+    private PasswordEncoder encoder;
 
     public UserService(UserRepository userRepository, UserRelationRepository userRelationRepository) {
         this.userRepository = userRepository;
@@ -36,7 +39,7 @@ public class UserService {
         User user = new User();
         user.setName(userDTO.getName());
         user.setEmail(userDTO.getEmail());
-        user.setPassword(userDTO.getPassword());
+        user.setPassword((encoder.encode(userDTO.getPassword())));
         user.setAdmin(userDTO.getEmail().endsWith("@socio.com"));
         userRepository.save(user);
         return ResponseEntity.ok("User registered successfully.");
@@ -44,7 +47,7 @@ public class UserService {
 
     public ResponseEntity<String> loginUser(LoginDTO loginDTO) {
         User user = userRepository.findByEmail(loginDTO.getEmail());
-        if (user != null && loginDTO.getPassword().equals(user.getPassword())) {
+        if (user != null && encoder.matches(loginDTO.getPassword(), user.getPassword())) {
             return ResponseEntity.ok("Login successful.");
         }
         return ResponseEntity.status(401).body("Invalid credentials.");
@@ -74,11 +77,11 @@ public class UserService {
         if (user == null) {
             return ResponseEntity.badRequest().body("User not found.");
         }
-        if (oldPassword.equals(user.getPassword())) {
+        if (!encoder.matches(oldPassword, user.getPassword())) {
             return ResponseEntity.status(403).body("Old password is incorrect.");
         }
 
-        user.setPassword(newPassword);
+        user.setPassword(encoder.encode(newPassword));
         userRepository.save(user);
         return ResponseEntity.ok("Password updated successfully.");
     }
@@ -108,7 +111,7 @@ public class UserService {
         User user = userRepository.findById(id).get();
 
         if (dto.getName() != null) user.setName(dto.getName());
-        if (dto.getPassword() != null) user.setPassword(dto.getPassword());
+        if (dto.getPassword() != null) user.setPassword(encoder.encode(dto.getPassword()));
         if (dto.getRole() != null) user.setRole(dto.getRole());
         if (dto.getIsPrivate() != null) user.setPrivate(dto.getIsPrivate());
         if (dto.getDob() != null) user.setDob(dto.getDob());

@@ -6,17 +6,10 @@
   <component name="ChangeListManager">
     <list default="true" id="42de7d4d-cdef-4bed-a645-ab567401fb7c" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/pom.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/controller/PostController.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/controller/PostController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Post.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/entity/Post.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/repository/PostRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/repository/PostRepository.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/service/UserService.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/service/UserService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/src/main/resources/application.properties" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/resources/application.properties" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/target/classes/application.properties" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/application.properties" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/controller/PostController.class" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/controller/PostController.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/entity/Post.class" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/entity/Post.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/repository/PostRepository.class" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/repository/PostRepository.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/service/UserService.class" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/service/UserService.class" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/Swagger/SwaggerConfig.java" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/controller/UserController.java" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/src/main/java/com/farhan/Socio/controller/UserController.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/controller/UserController.class" beforeDir="false" afterPath="$PROJECT_DIR$/Socio/target/classes/com/farhan/Socio/controller/UserController.class" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Socio/target/classes/com/magure/HealthiFy/Swagger/SwaggerConfig.class" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -108,12 +101,21 @@
       <option name="project" value="LOCAL" />
       <updated>1745574756618</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="security">
+      <option name="closed" value="true" />
+      <created>1745584692061</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1745584692061</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="f" />
-    <option name="LAST_COMMIT_MESSAGE" value="f" />
+    <MESSAGE value="security" />
+    <option name="LAST_COMMIT_MESSAGE" value="security" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

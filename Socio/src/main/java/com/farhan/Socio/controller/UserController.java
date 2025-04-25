@@ -2,17 +2,32 @@ package com.farhan.Socio.controller;
 
 import com.farhan.Socio.dto.LoginDTO;
 import com.farhan.Socio.dto.SignInDTO;
+import com.farhan.Socio.dto.UserUpdateRequestDTO;
+import com.farhan.Socio.entity.User;
+import com.farhan.Socio.entity.UserFollowerStatsProjection;
 import com.farhan.Socio.service.UserService;
+import com.farhan.Socio.service.UserUploadService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
 
     @Autowired
-    private UserService userService;
+    private final UserService userService;
+    @Autowired
+    private final UserUploadService userUploadService;
+
+    public UserController(UserService userService, UserUploadService userUploadService) {
+        this.userService = userService;
+        this.userUploadService = userUploadService;
+    }
 
     @PostMapping("/register")
     public ResponseEntity<String> register(@RequestBody SignInDTO userDTO) {
@@ -32,6 +47,31 @@ public class UserController {
     @PostMapping("/make-admin")
     public ResponseEntity<String> makeAdmin(@RequestParam String email) {
         return userService.makeAdmin(email);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<String> updateUser(@PathVariable String id, @RequestBody UserUpdateRequestDTO dto) {
+        return userService.updateUser(id, dto);
+    }
+
+    @GetMapping("/email/{email}")
+    public ResponseEntity<User> getUserByEmail(@PathVariable String email) {
+        return userService.getUserByEmail(email);
+    }
+
+    @GetMapping
+    public ResponseEntity<List<User>> getAllUsers() {
+        return ResponseEntity.ok(userService.getAllUsers());
+    }
+    
+    @GetMapping("/followers/grouped")
+    public ResponseEntity<List<UserFollowerStatsProjection>> getUsersGroupedByFollowerDate() {
+        return ResponseEntity.ok(userService.getUsersGroupedByDateOrderedByFollowers());
+    }
+
+    @PostMapping("/upload")
+    public ResponseEntity<String> uploadUsers(@RequestParam("file") MultipartFile file) throws IOException {
+        return ResponseEntity.ok(userUploadService.uploadUsers(file));
     }
 
 }

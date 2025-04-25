@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.experimental.Accessors;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -20,12 +21,13 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Accessors(chain = true)
 public class User {
     @Id
     private String id = UUID.randomUUID().toString();
-    private boolean isAdmin;
 
-    @Column(nullable = false)
+    private boolean isAdmin;
+    @Column(nullable = true)
     private String name;
 
     @Column(unique = true, nullable = false)

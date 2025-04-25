@@ -9,28 +9,30 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
+
 @Entity
-@Table(name = "comments")
+@Table(name = "user_relations")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class Comment {
+public class UserRelation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "post_id", nullable = false)
-    private Post post;
+    @JoinColumn(name = "source_user_id", nullable = false)
+    private User sourceUser; // who follows/unfollows
 
     @ManyToOne
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user; // who commented
+    @JoinColumn(name = "target_user_id", nullable = false)
+    private User targetUser; // who is followed/unfollowed
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    private String content;
+    @Enumerated(EnumType.STRING)
+    private RelationType relationType; // FOLLOW or UNFOLLOW
 
     @CreationTimestamp
     private LocalDateTime createdAt;
+
 }

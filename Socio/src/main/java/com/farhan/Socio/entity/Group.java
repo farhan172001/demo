@@ -8,9 +8,11 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
-@Table(name = "groups")
+@Table(name = "user_groups")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -23,11 +25,8 @@ public class Group {
     private String name;
 
     @ManyToOne
-    @JoinColumn(name = "creator_id")
-    private User creator;
+    private User createdBy;
 
-    private boolean isPrivate;
-
-    @CreationTimestamp
-    private LocalDateTime createdAt;
+    @ManyToMany
+    private Set<User> members = new HashSet<>();
 }

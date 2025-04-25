@@ -37,7 +37,7 @@ public class Post {
     @JoinColumn(name = "shared_from_post_id")
     private Post sharedFrom;
 
-    private boolean isReported;
+    private boolean isReported = false;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

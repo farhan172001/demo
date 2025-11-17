@@ -1,0 +1,12 @@
+public void testMQConnection() {
+    try {
+        int openOptions = CMQC.MQOO_INQUIRE | CMQC.MQOO_INPUT_SHARED;
+        MQQueue queue = mqQueueManager.accessQueue(mqQueueName, openOptions);
+
+        System.out.println("MQ Connected Successfully and Queue Opened: " + mqQueueName);
+
+        queue.close();
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}

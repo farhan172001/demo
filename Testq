@@ -1,0 +1,42 @@
+import com.ibm.mq.MQException;
+import com.ibm.mq.MQMessage;
+import com.ibm.mq.MQPutMessageOptions;
+import com.ibm.mq.MQQueue;
+
+// ...
+
+public void testQueue() {
+    MQQueue queue = null;
+
+    try {
+        // Borrow a queue from the pool
+        queue = create();  
+
+        if (queue != null) {
+            AppLogger.info(this.getClass(), "Queue object created: true");
+
+            // Prepare a simple test message
+            MQMessage message = new MQMessage();
+            message.format = MQMessage.FORMAT_STRING;
+            message.writeString("This is a test message from MQQueuePool");
+
+            MQPutMessageOptions pmo = new MQPutMessageOptions(); // default options
+
+            // Put the message into the queue
+            queue.put(message, pmo);
+
+            AppLogger.info(this.getClass(), "Test message successfully put into queue: " + mqQueueName);
+        } else {
+            AppLogger.info(this.getClass(), "Queue object creation failed");
+        }
+
+    } catch (MQException | java.io.IOException ex) {
+        AppLogger.error(this.getClass(), "Error in testQueue: " + ex.getMessage(), ex);
+
+    } finally {
+        // Expire/close the queue
+        if (queue != null) {
+            expire(queue);
+        }
+    }
+}

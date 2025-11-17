@@ -1,0 +1,135 @@
+package com.aflac.eib.mq;
+
+import com.ibm.mq.MQQueue;
+import com.ibm.mq.jms.MQQueueConnectionFactory;
+import com.ibm.msg.client.wmq.WMQConstants;
+import com.aflac.eib.lib.kafka.logging.AppLogger;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Scope;
+import org.springframework.core.env.Environment;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import javax.jms.JMSException;
+import javax.jms.QueueConnection;
+import javax.jms.QueueSession;
+
+@Configuration
+@Scope("singleton")
+public class MQQueuePool extends ObjectPool<MQQueue> {
+
+    @Autowired
+    private Environment env;
+
+    private MQQueueConnectionFactory factory;
+    private QueueConnection queueConnection;
+
+    private String mqHostName;
+    private int mqPort;
+    private String mqChannelName;
+    private String mqQueueName;
+    private String mqManagerName;
+    private String mqUserName;
+    private String mqPassword;
+
+    public MQQueuePool() {
+        super();
+    }
+
+    @PostConstruct
+    private void initializeMQQueuePool() {
+        AppLogger.info(this.getClass(), "Initializing MQ Queue Pool...");
+
+        try {
+            loadMQConfiguration();
+            initializeFactory();
+            initializeConnection();
+            AppLogger.info(this.getClass(), "MQ Queue Pool initialized successfully");
+        } catch (Exception ex) {
+            AppLogger.error(this.getClass(), "Failed to initialize MQ Queue Pool: " + ex.getMessage(), ex);
+            throw new RuntimeException("MQ Queue Pool initialization failed", ex);
+        }
+    }
+
+    private void loadMQConfiguration() {
+        // Using IDE-friendly property names
+        mqManagerName = env.getProperty("mqManagerName", "PCO1");
+        mqHostName = env.getProperty("mqHostName", "upico.aflac.com");
+        mqPort = Integer.parseInt(env.getProperty("mqPort", "1416"));
+        mqChannelName = env.getProperty("mqChannelName", "EIB.TO.PCO1");
+        mqQueueName = env.getProperty("mqQueueName", "AG.EOS.TO.EIB.IMAGE.DATA");
+        mqUserName = env.getProperty("mqUserName"); // optional
+        mqPassword = env.getProperty("mqPassword");  // optional
+
+        AppLogger.info(this.getClass(), String.format(
+                "MQ Config loaded - Manager: %s, Host: %s:%d, Channel: %s, Queue: %s, User: %s",
+                mqManagerName, mqHostName, mqPort, mqChannelName, mqQueueName,
+                (mqUserName != null ? mqUserName : "not set")
+        ));
+    }
+
+    private void initializeFactory() throws JMSException {
+        factory = new MQQueueConnectionFactory();
+        factory.setHostName(mqHostName);
+        factory.setPort(mqPort);
+        factory.setChannel(mqChannelName);
+        factory.setQueueManager(mqManagerName);
+        factory.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+
+        // Set credentials if provided
+        if (mqUserName != null && !mqUserName.isEmpty()) {
+            factory.setStringProperty(WMQConstants.USERID, mqUserName);
+            factory.setStringProperty(WMQConstants.PASSWORD, mqPassword);
+        }
+
+        AppLogger.info(this.getClass(), "MQQueueConnectionFactory initialized successfully");
+    }
+
+    private void initializeConnection() throws JMSException {
+        queueConnection = factory.createQueueConnection();
+        queueConnection.start();
+        AppLogger.info(this.getClass(), "QueueConnection started successfully");
+    }
+
+    @Override
+    public MQQueue create() {
+        try {
+            QueueSession session = queueConnection.createQueueSession(false, QueueSession.AUTO_ACKNOWLEDGE);
+            MQQueue queue = (MQQueue) session.createQueue(mqQueueName);
+            AppLogger.info(this.getClass(), "MQ Queue created successfully from pool: " + mqQueueName);
+            return queue;
+        } catch (JMSException ex) {
+            AppLogger.error(this.getClass(), "Failed to create MQ Queue from pool: " + ex.getMessage(), ex);
+            throw new RuntimeException("Failed to create MQ Queue from pool", ex);
+        }
+    }
+
+    @Override
+    public void expire(MQQueue queue) {
+        // JMS Queue is lightweight; sessions handle cleanup
+        AppLogger.info(this.getClass(), "MQ Queue expired from pool: " + mqQueueName);
+    }
+
+    @Override
+    public boolean validate(MQQueue queue) {
+        // Always valid for JMS lightweight Queue objects
+        return true;
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        try {
+            if (queueConnection != null) {
+                queueConnection.close();
+                AppLogger.info(this.getClass(), "QueueConnection closed successfully");
+            }
+        } catch (JMSException ex) {
+            AppLogger.error(this.getClass(), "Error during MQ cleanup: " + ex.getMessage(), ex);
+        }
+    }
+
+    public boolean isConnected() {
+        return queueConnection != null;
+    }
+}

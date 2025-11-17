@@ -1,0 +1,11 @@
+public void testMQConnection() {
+    try {
+        if (mqQueueManager != null && mqQueueManager.isConnected()) {
+            System.out.println("MQ Manager Connected Successfully!");
+        } else {
+            System.out.println("MQ Manager NOT Connected!");
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}

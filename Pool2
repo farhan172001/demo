@@ -1,0 +1,164 @@
+package com.aflac.eib.mq;
+
+import com.ibm.mq.MQException;
+import com.ibm.mq.MQQueue;
+import com.ibm.mq.MQQueueManager;
+import com.ibm.mq.constants.MQConstants;
+import com.ibm.msg.client.wmq.WMQConstants;
+import com.ibm.msg.client.wmq.WMQQueueManager;
+import com.ibm.msg.client.jms.JmsFactoryFactory;
+import com.ibm.msg.client.jms.JmsQueue;
+import com.aflac.eib.lib.kafka.logging.AppLogger;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.stereotype.Component;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import java.util.Hashtable;
+
+@Component
+public class MQConnectionManager {
+
+    @Autowired
+    private Environment env;
+
+    private MQQueueManager mqQueueManager;
+
+    private String mqHostName;
+    private int mqPort;
+    private String mqChannelName;
+    private String mqQueueName;
+    private String mqManagerName;
+    private String mqUserName;
+    private String mqPassword;
+
+    @PostConstruct
+    public void initialize() {
+        AppLogger.info(this.getClass(), "Initializing MQ Connection...");
+        loadMQConfiguration();
+        connectToQueueManagerWithRetry(3);
+    }
+
+    private void loadMQConfiguration() {
+        this.mqManagerName = env.getProperty("mq.manager.name", "PCO1");
+        this.mqHostName = env.getProperty("mq.host.name", "upico.aflac.com");
+        this.mqPort = Integer.parseInt(env.getProperty("mq.port", "1416"));
+        this.mqChannelName = env.getProperty("mq.channel.name", "EIB.TO.PCO1");
+        this.mqQueueName = env.getProperty("mq.queue.name", "AG.EOS.TO.EIB.IMAGE.DATA");
+        this.mqUserName = env.getProperty("mq.user.name");
+        this.mqPassword = env.getProperty("mq.password");
+
+        AppLogger.info(this.getClass(), String.format(
+                "MQ Config - Manager: %s, Host: %s:%d, Channel: %s, Queue: %s",
+                mqManagerName, mqHostName, mqPort, mqChannelName, mqQueueName
+        ));
+    }
+
+    private void connectToQueueManagerWithRetry(int maxRetries) {
+        int attempt = 0;
+        long backoff = 2000; // start 2 sec
+        while (attempt < maxRetries) {
+            try {
+                connectToQueueManager();
+                return;
+            } catch (MQException ex) {
+                attempt++;
+                AppLogger.error(this.getClass(),
+                        String.format("MQ connection attempt %d failed. ReasonCode=%d", attempt, ex.reasonCode), ex);
+                try {
+                    Thread.sleep(backoff);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                backoff *= 2; // exponential backoff
+            }
+        }
+        throw new RuntimeException("Failed to connect to MQ after " + maxRetries + " attempts");
+    }
+
+    private void connectToQueueManager() throws MQException {
+        if (mqQueueManager != null && mqQueueManager.isConnected()) {
+            AppLogger.info(this.getClass(), "QueueManager already connected");
+            return;
+        }
+
+        Hashtable<String, Object> props = new Hashtable<>();
+        props.put(WMQConstants.WMQ_HOST_NAME, mqHostName);
+        props.put(WMQConstants.WMQ_PORT, mqPort);
+        props.put(WMQConstants.WMQ_CHANNEL, mqChannelName);
+        props.put(WMQConstants.WMQ_CONNECTION_MODE, WMQConstants.WMQ_CM_CLIENT);
+        props.put(WMQConstants.WMQ_QUEUE_MANAGER, mqManagerName);
+        if (mqUserName != null && !mqUserName.isEmpty()) {
+            props.put(WMQConstants.USERID, mqUserName);
+            props.put(WMQConstants.PASSWORD, mqPassword);
+        }
+
+        mqQueueManager = new MQQueueManager(mqManagerName, props);
+        AppLogger.info(this.getClass(), "Connected to MQQueueManager: " + mqManagerName);
+    }
+
+    /**
+     * Get a queue object for sending/receiving messages.
+     * Create per call, lightweight.
+     */
+    public MQQueue getQueue() {
+        try {
+            if (mqQueueManager == null || !mqQueueManager.isConnected()) {
+                AppLogger.info(this.getClass(), "QueueManager disconnected, reconnecting...");
+                connectToQueueManagerWithRetry(3);
+            }
+
+            int openOptions = MQConstants.MQOO_INPUT_SHARED
+                    | MQConstants.MQOO_OUTPUT
+                    | MQConstants.MQOO_FAIL_IF_QUIESCING;
+
+            MQQueue queue = mqQueueManager.accessQueue(
+                    mqQueueName,
+                    openOptions,
+                    null, null, null
+            );
+            AppLogger.info(this.getClass(), "Queue accessed: " + mqQueueName);
+            return queue;
+
+        } catch (MQException ex) {
+            AppLogger.error(this.getClass(), "Failed to access queue: " + mqQueueName + ", ReasonCode=" + ex.reasonCode, ex);
+            throw new RuntimeException("Failed to access MQ Queue", ex);
+        }
+    }
+
+    public void closeQueue(MQQueue queue) {
+        if (queue == null) return;
+        try {
+            if (queue.isOpen()) queue.close();
+        } catch (MQException ex) {
+            AppLogger.error(this.getClass(), "Error closing queue, ReasonCode=" + ex.reasonCode, ex);
+        }
+    }
+
+    public boolean isQueueValid(MQQueue queue) {
+        return queue != null && queue.isOpen();
+    }
+
+    public boolean isConnected() {
+        try {
+            return mqQueueManager != null && mqQueueManager.isConnected();
+        } catch (MQException ex) {
+            AppLogger.error(this.getClass(), "Error checking connection", ex);
+            return false;
+        }
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        AppLogger.info(this.getClass(), "Cleaning up MQ Connection...");
+        try {
+            if (mqQueueManager != null && mqQueueManager.isConnected()) {
+                mqQueueManager.disconnect();
+                AppLogger.info(this.getClass(), "QueueManager disconnected successfully");
+            }
+        } catch (MQException ex) {
+            AppLogger.error(this.getClass(), "Error during cleanup", ex);
+        }
+    }
+}

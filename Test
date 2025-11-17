@@ -1,12 +1,37 @@
-public void testMQConnection() {
+import javax.jms.*;
+
+public void testQueue() {
+    QueueSession session = null;
+    QueueSender sender = null;
+
     try {
-        int openOptions = CMQC.MQOO_INQUIRE | CMQC.MQOO_INPUT_SHARED;
-        MQQueue queue = mqQueueManager.accessQueue(mqQueueName, openOptions);
+        // 1. Create a JMS session
+        session = queueConnection.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
 
-        System.out.println("MQ Connected Successfully and Queue Opened: " + mqQueueName);
+        // 2. Create the queue object
+        Queue queue = session.createQueue(mqQueueName);
 
-        queue.close();
-    } catch (Exception e) {
-        e.printStackTrace();
+        // 3. Create a sender
+        sender = session.createSender(queue);
+
+        // 4. Create a simple text message
+        TextMessage message = session.createTextMessage();
+        message.setText("Test message from MQQueuePool");
+
+        // 5. Send the message
+        sender.send(message);
+
+        AppLogger.info(this.getClass(), "Test message sent successfully to queue: " + mqQueueName);
+
+    } catch (JMSException ex) {
+        AppLogger.error(this.getClass(), "Error in testQueue: " + ex.getMessage(), ex);
+    } finally {
+        // 6. Cleanup
+        try {
+            if (sender != null) sender.close();
+            if (session != null) session.close();
+        } catch (JMSException ex) {
+            AppLogger.error(this.getClass(), "Error closing session/sender", ex);
+        }
     }
 }

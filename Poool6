@@ -1,0 +1,233 @@
+package com.aflac.eib.mq;
+
+import com.ibm.mq.jms.MQQueueConnectionFactory;
+import com.ibm.msg.client.wmq.WMQConstants;
+import com.aflac.eib.lib.kafka.logging.AppLogger;
+import com.aflac.eib.servicename.configuration.object.pool.ObjectPool;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Scope;
+import org.springframework.core.env.Environment;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import javax.jms.JMSException;
+import javax.jms.QueueConnection;
+import javax.jms.QueueSession;
+import javax.jms.Queue;
+
+@Configuration
+@Scope("singleton")
+public class MQQueuePool extends ObjectPool<QueueSession> {
+
+    @Autowired
+    private Environment env;
+
+    private MQQueueConnectionFactory factory;
+    private QueueConnection queueConnection;
+
+    private String mqHostName;
+    private int mqPort;
+    private String mqChannelName;
+    private String mqQueueName;
+    private String mqManagerName;
+    private String mqUserName;
+    private String mqPassword;
+
+    // Pool configuration
+    private final int INITIAL_POOL_SIZE = 5;
+    private final int VALIDATION_INTERVAL = 30; // seconds
+
+    public MQQueuePool() {
+        super();
+    }
+
+    @PostConstruct
+    private void initializeMQQueuePool() {
+        AppLogger.info(this.getClass(), "Initializing MQ Queue Pool...");
+
+        try {
+            loadMQConfiguration();
+            initializeFactory();
+            initializeConnection();
+
+            // Initialize pool AFTER queueConnection is ready
+            initializePool(INITIAL_POOL_SIZE, VALIDATION_INTERVAL);
+
+            AppLogger.info(this.getClass(), "MQ Queue Pool initialized successfully");
+        } catch (Exception ex) {
+            AppLogger.error(this.getClass(), "Failed to initialize MQ Queue Pool: " + ex.getMessage(), ex);
+            throw new RuntimeException("MQ Queue Pool initialization failed", ex);
+        }
+    }
+
+    private void loadMQConfiguration() {
+        mqManagerName = env.getProperty("mqManagerName", "PCO1");
+        mqHostName = env.getProperty("mqHostName", "upico.aflac.com");
+        mqPort = Integer.parseInt(env.getProperty("mqPort", "1416"));
+        mqChannelName = env.getProperty("mqChannelName", "EIB.TO.PCO1");
+        mqQueueName = env.getProperty("mqQueueName", "AG.EOS.TO.EIB.IMAGE.DATA");
+        mqUserName = env.getProperty("mqUserName");
+        mqPassword = env.getProperty("mqPassword");
+
+        AppLogger.info(this.getClass(), String.format(
+                "MQ Config loaded - Manager: %s, Host: %s:%d, Channel: %s, Queue: %s, User: %s",
+                mqManagerName, mqHostName, mqPort, mqChannelName, mqQueueName, mqUserName));
+    }
+
+    private void initializeFactory() throws JMSException {
+        factory = new MQQueueConnectionFactory();
+        factory.setHostName(mqHostName);
+        factory.setPort(mqPort);
+        factory.setChannel(mqChannelName);
+        factory.setQueueManager(mqManagerName);
+        factory.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+
+        if (mqUserName != null && !mqUserName.isEmpty()) {
+            factory.setStringProperty(WMQConstants.USERID, mqUserName);
+            factory.setStringProperty(WMQConstants.PASSWORD, mqPassword);
+        }
+
+        AppLogger.info(this.getClass(), "MQQueueConnectionFactory initialized successfully");
+    }
+
+    private void initializeConnection() throws JMSException {
+        queueConnection = factory.createQueueConnection();
+        queueConnection.start();
+        AppLogger.info(this.getClass(), "QueueConnection started successfully");
+    }
+
+    @Override
+    protected QueueSession create() {
+        try {
+            if (queueConnection == null) {
+                throw new IllegalStateException("QueueConnection not initialized yet");
+            }
+            QueueSession session = queueConnection.createQueueSession(false, QueueSession.AUTO_ACKNOWLEDGE);
+            AppLogger.info(this.getClass(), "QueueSession created successfully");
+            return session;
+        } catch (JMSException ex) {
+            AppLogger.error(this.getClass(), "Failed to create QueueSession: " + ex.getMessage(), ex);
+            throw new RuntimeException("Failed to create QueueSession", ex);
+        }
+    }
+
+    @Override
+    protected boolean validate(QueueSession session) {
+        return session != null; // lightweight validation
+    }
+
+    @Override
+    protected void expire(QueueSession session) {
+        try {
+            if (session != null) session.close();
+            AppLogger.info(this.getClass(), "QueueSession expired/closed");
+        } catch (JMSException ex) {
+            AppLogger.error(this.getClass(), "Error closing QueueSession", ex);
+        }
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        shutdown(); // clean pool
+        try {
+            if (queueConnection != null) {
+                queueConnection.close();
+                AppLogger.info(this.getClass(), "QueueConnection closed successfully");
+            }
+        } catch (JMSException ex) {
+            AppLogger.error(this.getClass(), "Error during MQ cleanup: " + ex.getMessage(), ex);
+        }
+    }
+
+    public boolean isConnected() {
+        return queueConnection != null;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+package com.aflac.eib.servicename.configuration.object.pool;
+
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+public abstract class ObjectPool<T> {
+
+    private ConcurrentLinkedQueue<T> pool;
+    private ScheduledExecutorService executorService;
+
+    // Expiration time for objects in ms (optional)
+    protected long expirationTime = 60000;
+
+    public ObjectPool() {
+        // Do NOT initialize the pool here to avoid NPE in Spring
+        // Initialization will be done after @PostConstruct in subclass
+    }
+
+    protected void initializePool(int initialSize, int validationIntervalSeconds) {
+        pool = new ConcurrentLinkedQueue<>();
+        for (int i = 0; i < initialSize; i++) {
+            pool.add(create());
+        }
+
+        // Periodic validation
+        executorService = Executors.newSingleThreadScheduledExecutor();
+        executorService.scheduleWithFixedDelay(this::validatePool,
+                validationIntervalSeconds,
+                validationIntervalSeconds,
+                TimeUnit.SECONDS);
+    }
+
+    public T borrowObject() {
+        T object = pool.poll();
+        if (object == null) {
+            object = create();
+        } else if (!validate(object)) {
+            expire(object);
+            object = create();
+        }
+        return object;
+    }
+
+    public void returnObject(T object) {
+        if (object == null) return;
+        if (validate(object)) {
+            pool.offer(object);
+        } else {
+            expire(object);
+        }
+    }
+
+    private void validatePool() {
+        pool.removeIf(obj -> {
+            if (!validate(obj)) {
+                expire(obj);
+                return true;
+            }
+            return false;
+        });
+    }
+
+    public void shutdown() {
+        if (executorService != null) executorService.shutdown();
+        if (pool != null) {
+            pool.forEach(this::expire);
+            pool.clear();
+        }
+    }
+
+    protected abstract T create();
+    protected abstract boolean validate(T object);
+    protected abstract void expire(T object);
+}

@@ -1,0 +1,175 @@
+package com.aflac.eib.mq;
+
+import com.aflac.eib.lib.kafka.logging.AppLogger;
+import com.ibm.mq.jms.MQQueueConnectionFactory;
+import com.ibm.msg.client.wmq.WMQConstants;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Scope;
+import org.springframework.core.env.Environment;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import javax.jms.JMSException;
+import javax.jms.Queue;
+import javax.jms.QueueConnection;
+import javax.jms.QueueSession;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
+/**
+ * Production-ready MQ Queue Pool using JMS API
+ */
+@Configuration
+@Scope("singleton")
+public class MQQueuePool extends ObjectPool<Queue> {
+
+    @Autowired
+    private Environment env;
+
+    private MQQueueConnectionFactory factory;
+    private QueueConnection queueConnection;
+    private String mqHostName;
+    private int mqPort;
+    private String mqChannelName;
+    private String mqQueueName;
+    private String mqManagerName;
+    private String mqUserName;
+    private String mqPassword;
+
+    private static final int INITIAL_POOL_SIZE = 5;
+    private static final int VALIDATION_INTERVAL = 30; // seconds
+
+    public MQQueuePool() {
+        super();
+    }
+
+    @PostConstruct
+    private void initializeMQQueuePool() {
+        AppLogger.info(this.getClass(), "Initializing MQ Queue Pool...");
+
+        try {
+            loadMQConfiguration();
+            initializeFactory();
+            initializeConnection();
+
+            // Initialize Object Pool
+            initializePool(INITIAL_POOL_SIZE, VALIDATION_INTERVAL);
+
+            AppLogger.info(this.getClass(), "MQ Queue Pool initialized successfully");
+        } catch (Exception ex) {
+            AppLogger.error(this.getClass(), "Failed to initialize MQ Queue Pool: " + ex.getMessage(), ex);
+            throw new RuntimeException("MQ Queue Pool initialization failed", ex);
+        }
+    }
+
+    private void loadMQConfiguration() {
+        mqManagerName = env.getProperty("mq.manager.name", "PCO1");
+        mqHostName = env.getProperty("mq.host.name", "upico.aflac.com");
+        mqPort = Integer.parseInt(env.getProperty("mq.port", "1416"));
+        mqChannelName = env.getProperty("mq.channel.name", "EIB.TO.PCO1");
+        mqQueueName = env.getProperty("mq.queue.name", "AG.EOS.TO.EIB.IMAGE.DATA");
+        mqUserName = env.getProperty("mq.user.name");
+        mqPassword = env.getProperty("mq.password");
+
+        AppLogger.info(this.getClass(), String.format(
+                "MQ Config loaded - Manager: %s, Host: %s:%d, Channel: %s, Queue: %s, User: %s",
+                mqManagerName, mqHostName, mqPort, mqChannelName, mqQueueName,
+                (mqUserName != null ? mqUserName : "N/A")
+        ));
+    }
+
+    private void initializeFactory() throws JMSException {
+        factory = new MQQueueConnectionFactory();
+        factory.setHostName(mqHostName);
+        factory.setPort(mqPort);
+        factory.setChannel(mqChannelName);
+        factory.setQueueManager(mqManagerName);
+        factory.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+
+        if (mqUserName != null && !mqUserName.isEmpty()) {
+            factory.setStringProperty(WMQConstants.USERID, mqUserName);
+            factory.setStringProperty(WMQConstants.PASSWORD, mqPassword);
+        }
+
+        AppLogger.info(this.getClass(), "MQQueueConnectionFactory initialized successfully");
+    }
+
+    private void initializeConnection() throws JMSException {
+        queueConnection = factory.createQueueConnection();
+        queueConnection.start();
+        AppLogger.info(this.getClass(), "QueueConnection started successfully");
+    }
+
+    @Override
+    protected Queue create() {
+        try {
+            QueueSession session = queueConnection.createQueueSession(false, QueueSession.AUTO_ACKNOWLEDGE);
+            Queue queue = session.createQueue(mqQueueName);
+            AppLogger.info(this.getClass(), "Queue created from pool: " + mqQueueName);
+            return queue;
+        } catch (JMSException ex) {
+            AppLogger.error(this.getClass(), "Failed to create Queue from pool: " + ex.getMessage(), ex);
+            throw new RuntimeException("Failed to create Queue from pool", ex);
+        }
+    }
+
+    @Override
+    protected void expire(Queue queue) {
+        // JMS Queue objects are lightweight, nothing special to close here
+        AppLogger.info(this.getClass(), "Queue expired from pool: " + mqQueueName);
+    }
+
+    @Override
+    protected boolean validate(Queue queue) {
+        // Can always return true for JMS Queue
+        return queue != null;
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        try {
+            if (queueConnection != null) {
+                queueConnection.close();
+                AppLogger.info(this.getClass(), "QueueConnection closed successfully");
+            }
+        } catch (JMSException ex) {
+            AppLogger.error(this.getClass(), "Error closing MQ connection: " + ex.getMessage(), ex);
+        }
+    }
+
+    public boolean isConnected() {
+        return queueConnection != null;
+    }
+}
+
+
+
+
+// ================== TEMPORARY TEST METHOD ==================
+// Uncomment and use only for testing MQ connectivity and queue creation
+/*
+public void testQueueConnection() {
+    Queue queue = null;
+    try {
+        // Directly borrow from pool
+        queue = create();
+        AppLogger.info(this.getClass(), "Test Queue object created: " + (queue != null));
+
+        // Optional: simulate putting a test message (pseudo-code)
+        // QueueSession session = queueConnection.createQueueSession(false, QueueSession.AUTO_ACKNOWLEDGE);
+        // TextMessage message = session.createTextMessage("Test message");
+        // QueueSender sender = session.createSender(queue);
+        // sender.send(message);
+        // AppLogger.info(this.getClass(), "Test message sent successfully");
+
+        AppLogger.info(this.getClass(), "MQ testQueueConnection completed successfully");
+    } catch (Exception ex) {
+        AppLogger.error(this.getClass(), "Error in testQueueConnection: " + ex.getMessage(), ex);
+    } finally {
+        if (queue != null) {
+            expire(queue);
+        }
+    }
+}
+*/
+// ================== END TEMPORARY TEST METHOD ==================

@@ -1,11 +1,52 @@
-public void testMQConnection() {
-    try {
-        if (mqQueueManager != null && mqQueueManager.isConnected()) {
-            System.out.println("MQ Manager Connected Successfully!");
-        } else {
-            System.out.println("MQ Manager NOT Connected!");
+@RestController
+@RequestMapping("/api/mq")
+public class MQTestController {
+
+    @Autowired
+    private MQQueuePool mqQueuePool;
+
+    /**
+     * Test endpoint: http://localhost:8080/api/mq/test
+     */
+    @GetMapping("/test")
+    public ResponseEntity<String> testMQConnection() {
+        try {
+            mqQueuePool.testQueueConnection();
+            return ResponseEntity.ok("MQ Test completed successfully. Check logs for details.");
+        } catch (Exception ex) {
+            return ResponseEntity.status(500)
+                .body("MQ Test failed: " + ex.getMessage());
         }
-    } catch (Exception e) {
-        e.printStackTrace();
+    }
+
+    /**
+     * Test with receive: http://localhost:8080/api/mq/test-receive
+     */
+    @GetMapping("/test-receive")
+    public ResponseEntity<String> testMQConnectionWithReceive() {
+        try {
+            mqQueuePool.testQueueConnectionWithReceive();
+            return ResponseEntity.ok("MQ Test with receive completed. Check logs.");
+        } catch (Exception ex) {
+            return ResponseEntity.status(500)
+                .body("MQ Test with receive failed: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Check connection status: http://localhost:8080/api/mq/status
+     */
+    @GetMapping("/status")
+    public ResponseEntity<String> checkMQStatus() {
+        boolean connected = mqQueuePool.isConnected();
+        String status = String.format(
+            "MQ Connection Status: %s\nQueue Manager: %s\nQueue Name: %s\nHost: %s:%d",
+            connected ? "CONNECTED" : "DISCONNECTED",
+            mqQueuePool.getMqManagerName(),
+            mqQueuePool.getMqQueueName(),
+            mqQueuePool.getMqHostName(),
+            mqQueuePool.getMqPort()
+        );
+        return ResponseEntity.ok(status);
     }
 }

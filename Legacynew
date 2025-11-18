@@ -131,16 +131,18 @@ public class MQTestController {
     private MQQueuePool mqQueuePool;
 
     @GetMapping("/send")
-    public String sendMessage(@RequestParam String msg) {
+    public String send(@RequestParam String msg) {
         MQQueue queue = null;
-        try {
-            queue = mqQueuePool.borrowObject();
 
-            MQMessage mqMessage = new MQMessage();
-            mqMessage.writeString(msg);
+        try {
+            // Borrow queue from pool
+            queue = mqQueuePool.checkout();
+
+            MQMessage mqMsg = new MQMessage();
+            mqMsg.writeString(msg);
 
             MQPutMessageOptions pmo = new MQPutMessageOptions();
-            queue.put(mqMessage, pmo);
+            queue.put(mqMsg, pmo);
 
             return "Message sent successfully: " + msg;
 
@@ -150,24 +152,26 @@ public class MQTestController {
 
         } finally {
             if (queue != null) {
-                mqQueuePool.returnObject(queue);
+                mqQueuePool.checkIn(queue);
             }
         }
     }
 
     @GetMapping("/receive")
-    public String receiveMessage() {
+    public String receive() {
         MQQueue queue = null;
-        try {
-            queue = mqQueuePool.borrowObject();
 
-            MQMessage mqMessage = new MQMessage();
+        try {
+            queue = mqQueuePool.checkout();
+
+            MQMessage mqMsg = new MQMessage();
             MQGetMessageOptions gmo = new MQGetMessageOptions();
 
-            queue.get(mqMessage, gmo);
+            queue.get(mqMsg, gmo);
 
-            String message = mqMessage.readStringOfByteLength(mqMessage.getMessageLength());
-            return "Message received: " + message;
+            String received = mqMsg.readStringOfByteLength(mqMsg.getMessageLength());
+
+            return "Message received: " + received;
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -175,7 +179,7 @@ public class MQTestController {
 
         } finally {
             if (queue != null) {
-                mqQueuePool.returnObject(queue);
+                mqQueuePool.checkIn(queue);
             }
         }
     }

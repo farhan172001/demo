@@ -1,0 +1,182 @@
+@Configuration
+@Scope("singleton")
+public class MQQueuePool extends ObjectPool<MQQueue> {
+
+    private static final AppLogger logger = AppLogger.getLogger(MQQueuePool.class);
+
+    @Autowired
+    EISFNAConfigurationDAO eisfnaConfigurationDAO;
+
+    @Autowired
+    private Environment env;
+
+    private static MQQueueManager mqQueueManager = null;
+
+    private String mqHost = null;
+    private String mqPort = null;
+    private String mqChannel = null;
+    private String mqName = null;
+    private String mqManagerName = null;
+
+    @PostConstruct
+    private void initializeMQQueuePool() {
+        logger.info("MQQueuePool.initializeMQQueuePool - ENTER");
+        
+        try {
+            if (mqQueueManager == null || !mqQueueManager.isConnected()) {
+                String key = env.getProperty(EISFNAdapterConstants.EISFNA_KEY);
+                
+                logger.info("MQQueuePool.initializeMQQueuePool - Retrieved key from environment");
+                
+                EISFNAConfiguration configuration = eisfnaConfigurationDAO.findByKey(key);
+                
+                logger.info("MQQueuePool.initializeMQQueuePool - Retrieved configuration from DAO");
+                
+                if (key != null) {
+                    MQConnectionDetails mqAdapter = configuration.getMqAdapter().getMqConnectionDetails();
+                    
+                    this.mqHost = mqAdapter.getMqHostName();
+                    this.mqPort = mqAdapter.getMqPort();
+                    this.mqChannel = mqAdapter.getMqChannelName();
+                    this.mqName = mqAdapter.getMqQueueName();
+                    this.mqManagerName = mqAdapter.getMqManagerName();
+                    
+                    MQEnvironment.hostname = this.mqHost;
+                    MQEnvironment.port = new Integer(this.mqPort);
+                    MQEnvironment.channel = this.mqChannel;
+                    
+                    mqQueueManager = new MQQueueManager(mqManagerName);
+                    
+                    logger.info("MQQueuePool.initializeMQQueuePool - MQ Queue Manager initialized successfully");
+                }
+            }
+        } catch (Exception ex) {
+            mqQueueManager = null;
+            logger.error("MQQueuePool.initializeMQQueuePool - Error initializing MQ Queue Pool", ex);
+            throw new RuntimeException(ex);
+        } finally {
+            logger.info("MQQueuePool.initializeMQQueuePool - EXIT");
+        }
+    }
+
+    @Override
+    public MQQueue create() {
+        logger.info("MQQueuePool.create - ENTER");
+        
+        try {
+            if (mqQueueManager == null || !mqQueueManager.isConnected()) {
+                initializeMQQueuePool();
+            }
+            
+            int openOptions = MQC.MQOO_INQUIRE + MQC.MQOO_FAIL_IF_QUIESCING + MQC.MQOO_INPUT_SHARED;
+            
+            MQQueue queue = mqQueueManager.accessQueue(mqName, openOptions, null, null, null);
+            
+            logger.info("MQQueuePool.create - MQ Queue created successfully");
+            return queue;
+            
+        } catch (Exception ex) {
+            logger.error("MQQueuePool.create - Error creating MQ Queue", ex);
+            throw new RuntimeException(ex);
+        } finally {
+            logger.info("MQQueuePool.create - EXIT");
+        }
+    }
+
+    @Override
+    public void expire(MQQueue o) {
+        logger.info("MQQueuePool.expire - ENTER");
+        
+        try {
+            if (o != null) {
+                o.close();
+                logger.info("MQQueuePool.expire - MQ Queue closed successfully");
+            }
+        } catch (Exception ex) {
+            logger.error("MQQueuePool.expire - Error closing MQ Queue", ex);
+        } finally {
+            logger.info("MQQueuePool.expire - EXIT");
+        }
+    }
+
+    @Override
+    public boolean validate(MQQueue o) {
+        logger.info("MQQueuePool.validate - ENTER");
+        
+        try {
+            if (o != null) {
+                boolean isOpen = o.isOpen();
+                logger.info("MQQueuePool.validate - Queue validation result: " + isOpen);
+                return isOpen;
+            }
+            logger.info("MQQueuePool.validate - Queue is null");
+            return false;
+        } finally {
+            logger.info("MQQueuePool.validate - EXIT");
+        }
+
+
+
+
+
+
+
+
+
+@RestController
+@RequestMapping("/mq/test")
+public class MQTestController {
+
+    @Autowired
+    private MQQueuePool mqQueuePool;
+
+    @GetMapping("/send")
+    public String sendMessage(@RequestParam String msg) {
+        MQQueue queue = null;
+        try {
+            queue = mqQueuePool.borrowObject();
+
+            MQMessage mqMessage = new MQMessage();
+            mqMessage.writeString(msg);
+
+            MQPutMessageOptions pmo = new MQPutMessageOptions();
+            queue.put(mqMessage, pmo);
+
+            return "Message sent successfully: " + msg;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "Error sending message: " + e.getMessage();
+
+        } finally {
+            if (queue != null) {
+                mqQueuePool.returnObject(queue);
+            }
+        }
+    }
+
+    @GetMapping("/receive")
+    public String receiveMessage() {
+        MQQueue queue = null;
+        try {
+            queue = mqQueuePool.borrowObject();
+
+            MQMessage mqMessage = new MQMessage();
+            MQGetMessageOptions gmo = new MQGetMessageOptions();
+
+            queue.get(mqMessage, gmo);
+
+            String message = mqMessage.readStringOfByteLength(mqMessage.getMessageLength());
+            return "Message received: " + message;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "Error receiving message: " + e.getMessage();
+
+        } finally {
+            if (queue != null) {
+                mqQueuePool.returnObject(queue);
+            }
+        }
+    }
+}

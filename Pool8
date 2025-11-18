@@ -1,0 +1,214 @@
+@Configuration
+@Scope("singleton")
+public class MQQueuePool extends ObjectPool<QueueSession> {
+
+    @Autowired
+    private Environment env;
+
+    private MQQueueConnectionFactory factory;
+    private QueueConnection queueConnection;
+
+    private String mqHostName;
+    private int mqPort;
+    private String mqChannelName;
+    private String mqQueueName;
+    private String mqManagerName;
+    private String mqUserName;
+    private String mqPassword;
+
+    public MQQueuePool() {
+        super();
+    }
+
+    @PostConstruct
+    private void initializeMQQueuePool() {
+        AppLogger.info(this.getClass(), "Initializing MQ Queue Pool...");
+
+        try {
+            loadMQConfiguration();
+            initializeFactory();
+            initializeConnection();
+            AppLogger.info(this.getClass(), "MQ Queue Pool initialized successfully");
+        } catch (Exception ex) {
+            AppLogger.error(this.getClass(), "Failed to initialize MQ Queue Pool: " + ex.getMessage(), ex);
+            throw new RuntimeException("MQ Queue Pool initialization failed", ex);
+        }
+    }
+
+    private void loadMQConfiguration() {
+        this.mqManagerName = env.getProperty("mqManagerName", "PCO1");
+        this.mqHostName = env.getProperty("mqHostName", "upico.aflac.com");
+        this.mqPort = Integer.parseInt(env.getProperty("mqPort", "1416"));
+        this.mqChannelName = env.getProperty("mqChannelName", "EIB.TO.PCO1");
+        this.mqQueueName = env.getProperty("mqQueueName", "AG.EOS.TO.EIB.IMAGE.DATA");
+        this.mqUserName = env.getProperty("mqUserName");
+        this.mqPassword = env.getProperty("mqPassword");
+
+        AppLogger.info(this.getClass(), String.format(
+                "MQ Config loaded - Manager: %s, Host: %s:%d, Channel: %s, Queue: %s, User: %s",
+                mqManagerName, mqHostName, mqPort, mqChannelName, mqQueueName,
+                mqUserName != null ? mqUserName : "N/A"
+        ));
+    }
+
+    private void initializeFactory() throws JMSException {
+        factory = new MQQueueConnectionFactory();
+        factory.setHostName(mqHostName);
+        factory.setPort(mqPort);
+        factory.setChannel(mqChannelName);
+        factory.setQueueManager(mqManagerName);
+        factory.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+
+        // CRITICAL FIX: Properly set authentication properties
+        if (mqUserName != null && !mqUserName.isEmpty()) {
+            factory.setStringProperty(WMQConstants.USERID, mqUserName);
+            factory.setStringProperty(WMQConstants.PASSWORD, mqPassword);
+            // Add these important security settings
+            factory.setBooleanProperty(WMQConstants.USER_AUTHENTICATION_MQCSP, true);
+        }
+        
+        // Optional: Add SSL/TLS settings if required
+        // factory.setSSLCipherSuite("TLS_RSA_WITH_AES_128_CBC_SHA256");
+
+        AppLogger.info(this.getClass(), "MQQueueConnectionFactory initialized successfully");
+    }
+
+    private void initializeConnection() throws JMSException {
+        // Create connection with credentials if provided
+        if (mqUserName != null && !mqUserName.isEmpty()) {
+            queueConnection = factory.createQueueConnection(mqUserName, mqPassword);
+        } else {
+            queueConnection = factory.createQueueConnection();
+        }
+        
+        queueConnection.start();
+        AppLogger.info(this.getClass(), "QueueConnection started successfully");
+    }
+
+    @Override
+    protected QueueSession create() {
+        try {
+            QueueSession session = queueConnection.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
+            AppLogger.info(this.getClass(), "QueueSession created successfully");
+            return session;
+        } catch (JMSException ex) {
+            AppLogger.error(this.getClass(), "Failed to create QueueSession: " + ex.getMessage(), ex);
+            throw new RuntimeException("Failed to create QueueSession", ex);
+        }
+    }
+
+    @Override
+    protected void expire(QueueSession session) {
+        if (session != null) {
+            try {
+                session.close();
+                AppLogger.info(this.getClass(), "QueueSession expired and closed");
+            } catch (JMSException ex) {
+                AppLogger.error(this.getClass(), "Error closing QueueSession: " + ex.getMessage(), ex);
+            }
+        }
+    }
+
+    @Override
+    protected boolean validate(QueueSession session) {
+        if (session == null) {
+            return false;
+        }
+        
+        // Optional: Add advanced validation
+        try {
+            // Test if session is still usable
+            session.getAcknowledgeMode();
+            return true;
+        } catch (JMSException ex) {
+            AppLogger.warn(this.getClass(), "Session validation failed", ex);
+            return false;
+        }
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        shutdown(); // from ObjectPool, closes all sessions
+        if (queueConnection != null) {
+            try {
+                queueConnection.close();
+                AppLogger.info(this.getClass(), "QueueConnection closed successfully");
+            } catch (JMSException ex) {
+                AppLogger.error(this.getClass(), "Error during QueueConnection cleanup: " + ex.getMessage(), ex);
+            }
+        }
+    }
+
+    public boolean isConnected() {
+        return queueConnection != null;
+    }
+
+    /** Improved test method with better error handling */
+    public void testQueue() {
+        QueueSession session = null;
+        MessageProducer producer = null;
+        
+        try {
+            AppLogger.info(this.getClass(), "Starting queue test...");
+            
+            session = borrowObject();
+            Queue queue = session.createQueue(mqQueueName);
+            
+            AppLogger.info(this.getClass(), "Queue object created: " + mqQueueName);
+            
+            producer = session.createProducer(queue);
+            
+            // Set delivery mode and priority if needed
+            producer.setDeliveryMode(DeliveryMode.PERSISTENT);
+            producer.setPriority(4);
+            
+            TextMessage message = session.createTextMessage("Test message from MQQueuePool - " + 
+                new java.util.Date());
+            
+            producer.send(message);
+
+            AppLogger.info(this.getClass(), "Test message sent successfully: " + message.getText());
+
+        } catch (JMSSecurityException secEx) {
+            AppLogger.error(this.getClass(), 
+                "SECURITY ERROR - Check MQ permissions for user: " + mqUserName + 
+                " on queue: " + mqQueueName, secEx);
+            AppLogger.error(this.getClass(), "Error Code: " + secEx.getErrorCode());
+            AppLogger.error(this.getClass(), "Linked Exception: " + secEx.getLinkedException());
+            
+        } catch (JMSException jmsEx) {
+            AppLogger.error(this.getClass(), 
+                "JMS ERROR - Error Code: " + jmsEx.getErrorCode(), jmsEx);
+            if (jmsEx.getLinkedException() != null) {
+                AppLogger.error(this.getClass(), 
+                    "Linked Exception: " + jmsEx.getLinkedException().getMessage(), 
+                    jmsEx.getLinkedException());
+            }
+            
+        } catch (Exception ex) {
+            AppLogger.error(this.getClass(), "Error in testQueue: " + ex.getMessage(), ex);
+            
+        } finally {
+            try {
+                if (producer != null) {
+                    producer.close();
+                }
+            } catch (JMSException e) {
+                AppLogger.warn(this.getClass(), "Error closing producer", e);
+            }
+            
+            if (session != null) {
+                returnObject(session);
+            }
+        }
+    }
+    
+    // Getter methods for monitoring/debugging
+    public String getMqQueueName() {
+        return mqQueueName;
+    }
+    
+    public String getMqManagerName() {
+        return mqManagerName;
+    }
+}

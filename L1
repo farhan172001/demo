@@ -1,0 +1,122 @@
+@Override
+public MQQueue create() {
+    AppLogger.info(this.getClass(), "MQQueuePool.create - ENTER");
+
+    try {
+        if (mqQueueManager == null || !mqQueueManager.isConnected()) {
+            initializeMQQueuePool();
+        }
+
+        int openOptions = MQC.MQOO_INQUIRE
+                + MQC.MQOO_FAIL_IF_QUIESCING
+                + MQC.MQOO_INPUT_SHARED;
+
+        MQQueue queue = mqQueueManager.accessQueue(
+                mqName,
+                openOptions,
+                null,
+                null,
+                null
+        );
+
+        AppLogger.info(this.getClass(),
+                "MQQueuePool.create - MQ Queue created successfully: " + mqName);
+
+        return queue;
+
+    } catch (Exception ex) {
+
+        AppLogger.error(
+                this.getClass(),
+                "MQQueuePool.create - Error creating MQ Queue: " + mqName,
+                ex
+        );
+
+        throw new ApplicationException(
+                "Unable to create MQ queue: " + mqName,
+                ex,
+                IExceptionType.TECHNICAL
+        );
+
+    } finally {
+        AppLogger.info(this.getClass(), "MQQueuePool.create - EXIT");
+    }
+}
+@Override
+public void expire(MQQueue queue) {
+    AppLogger.info(this.getClass(), "MQQueuePool.expire - ENTER");
+
+    if (queue == null) {
+        AppLogger.warn(this.getClass(), "MQQueuePool.expire - Queue is null, nothing to close");
+        AppLogger.info(this.getClass(), "MQQueuePool.expire - EXIT");
+        return;
+    }
+
+    try {
+        if (queue.isOpen()) {
+            queue.close();
+        }
+    } catch (Exception ex) {
+        AppLogger.error(this.getClass(), "MQQueuePool.expire - Error closing MQ Queue", ex);
+        throw new ApplicationException(
+                "Failed to close MQ Queue",
+                ex,
+                IExceptionType.TECHNICAL
+        );
+    } finally {
+        AppLogger.info(this.getClass(), "MQQueuePool.expire - EXIT");
+    }
+}
+@Override
+public boolean validate(MQQueue queue) {
+    AppLogger.info(this.getClass(), "MQQueuePool.validate - ENTER");
+
+    try {
+        if (queue == null) {
+            AppLogger.warn(this.getClass(), "MQQueuePool.validate - Queue is null");
+            return false;
+        }
+
+        boolean isOpen = queue.isOpen();
+
+        AppLogger.info(
+                this.getClass(),
+                "MQQueuePool.validate - Queue validation result: " + isOpen
+        );
+
+        return isOpen;
+
+    } catch (Exception ex) {
+        AppLogger.error(this.getClass(), "MQQueuePool.validate - Exception during validation", ex);
+        return false;
+
+    } finally {
+        AppLogger.info(this.getClass(), "MQQueuePool.validate - EXIT");
+    }
+}
+catch (MQException e) {
+    AppLogger.error(
+            this.getClass(),
+            "MQ operation failed: " + e.getMessage(),
+            e
+    );
+
+    throw new ApplicationException(
+            "MQ operation failed while accessing MQ Queue / Manager",
+            e,
+            IExceptionType.TECHNICAL
+    );
+}
+catch (MQException e) {
+    AppLogger.error(
+            this.getClass(),
+            "MQException while opening queue '" + mqName + "'",
+            e
+    );
+
+    throw new ApplicationException(
+            "Failed to open MQ Queue: " + mqName,
+            e,
+            IExceptionType.TECHNICAL
+    );
+}

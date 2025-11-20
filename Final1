@@ -127,3 +127,52 @@ public class MetadataParser {
         return line.split(",")[1].trim();
     }
 }
+@Component
+public class MetadataParserUtil {
+
+    public MetadataModel parseTxtToMetadata(String txtContent, String fileName) throws ApplicationException {
+        try {
+            MetadataModel.MetadataModelBuilder builder = MetadataModel.builder();
+
+            String[] lines = txtContent.split("[;\n]");
+
+            for (String line : lines) {
+                if (line.contains("GroupNumber")) {
+                    builder.one(extract(line));
+                }
+                if (line.contains("GroupName")) {
+                    builder.two(extract(line));
+                }
+                if (line.contains("LoggedAt")) {
+                    builder.three(extract(line));
+                }
+            }
+
+            MetadataModel metadata = builder.build();
+
+            // VALIDATION
+            if (metadata.getOne() == null || metadata.getTwo() == null || metadata.getThree() == null) {
+                throw new ApplicationException(
+                        "Metadata TXT missing required fields in file: " + fileName,
+                        null,
+                        ExceptionType.TECHNICAL
+                );
+            }
+
+            return metadata;
+
+        } catch (ApplicationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ApplicationException(
+                    "Failed to parse metadata TXT file: " + fileName,
+                    e,
+                    ExceptionType.TECHNICAL
+            );
+        }
+    }
+
+    private String extract(String line) {
+        return line.split(",")[1].trim();
+    }
+}

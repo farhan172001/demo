@@ -191,3 +191,63 @@ public class FileConversionUtil {
         }
     }
 }
+@Service
+@RequiredArgsConstructor
+public class DocumentProcessingService {
+
+    private final FileConversionUtil fileConversionUtil;
+    private final MetadataParserUtil metadataParserUtil;
+    private final DestinationUrlBuilder destinationUrlBuilder;
+    private final S3StorageService s3StorageService;
+    private final FileTransferProducer fileTransferProducer;
+
+    public void processDocument(DocumentRequest request) throws ApplicationException {
+
+        // 1. Convert Base64 → PDF (with error handling)
+        byte[] pdfBytes = fileConversionUtil.convertBase64ToBytes(
+                request.getDataFileContent(),
+                request.getDataFileName()
+        );
+
+        // 2. Parse TXT → Model (with error handling)
+        MetadataModel metadata = metadataParserUtil.parseTxtToMetadata(
+                request.getMetadataFileContent(),
+                request.getMetadataFileName()
+        );
+
+        // 3. Upload PDF
+        s3StorageService.uploadObject(
+                request.getDataFileName(),
+                pdfBytes,
+                request.getDataFileContentType(),
+                null
+        );
+
+        // 4. Upload TXT
+        s3StorageService.uploadObject(
+                request.getMetadataFileName(),
+                request.getMetadataFileContent().getBytes(StandardCharsets.UTF_8),
+                "text/plain",
+                null
+        );
+
+        // 5. Build Destination URL
+        String destinationUrl = destinationUrlBuilder.buildDestinationUrl(
+                request.getDataFileName(),
+                metadata
+        );
+
+        // 6. Publish Event
+        FileTransferRequest transferRequest = FileTransferRequest.builder()
+                .sourceURI("s3://" + request.getDataFileName())
+                .destinationURIs(List.of(destinationUrl))
+                .isresponseRequired(true)
+                .build();
+
+        FileTransferEvent event = FileTransferEvent.builder()
+                .fileTransferRequest(transferRequest)
+                .build();
+
+        fileTransferProducer.send(event);
+    }
+}

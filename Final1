@@ -39,3 +39,12 @@ public class FileConversionUtil {
         return fileName.replace(".pdf", "").replace(".PDF", "");
     }
 }
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class MetadataModel {
+    private String groupNumber;
+    private String groupName;
+    private String loggedAt;
+}

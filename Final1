@@ -48,3 +48,82 @@ public class MetadataModel {
     private String groupName;
     private String loggedAt;
 }
+@Component
+public class MetadataParser {
+
+    public MetadataModel parse(String txt) {
+
+        MetadataModel.MetadataModelBuilder builder = MetadataModel.builder();
+
+        String[] lines = txt.split("[;\n]");
+
+        for (String line : lines) {
+            if (line.contains("GroupNumber")) {
+                builder.groupNumber(extractValue(line));
+            }
+            if (line.contains("GroupName")) {
+                builder.groupName(extractValue(line));
+            }
+            if (line.contains("LoggedAt")) {
+                builder.loggedAt(extractValue(line));
+            }
+        }
+        return builder.build();
+    }
+
+    private String extractValue(String line) {
+        return line.split(",")[1].trim();
+    }
+}
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class DocumentRequest {
+
+    private String metadataFileContent;     // TXT
+    private String dataFileContent;         // Base64 PDF
+    private String dataFileContentType;     // always "application/pdf"
+    private String dataFileName;            // PDF file name
+    private String metadataFileName;        // TXT file name
+}
+@Component
+public class DestinationUrlBuilder {
+
+    public String buildDestinationUrl(String fileName, MetadataModel metadata) {
+
+        return String.format("filenet://%s?one=%s&two=%s&three=%s",
+                fileName,
+                metadata.getOne(),
+                metadata.getTwo(),
+                metadata.getThree()
+        );
+    }
+} 
+@Component
+public class MetadataParser {
+
+    public MetadataModel parse(String txt) {
+
+        MetadataModel.MetadataModelBuilder builder = MetadataModel.builder();
+
+        String[] lines = txt.split("[;\n]");
+
+        for (String line : lines) {
+            if (line.contains("GroupNumber")) {
+                builder.one(extract(line));
+            }
+            if (line.contains("GroupName")) {
+                builder.two(extract(line));
+            }
+            if (line.contains("LoggedAt")) {
+                builder.three(extract(line));
+            }
+        }
+        return builder.build();
+    }
+
+    private String extract(String line) {
+        return line.split(",")[1].trim();
+    }
+}

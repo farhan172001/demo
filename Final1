@@ -27,3 +27,15 @@ private String resolveContentType(String fileName) throws S3OperationException {
             "Unsupported file format. Only PDF and TXT files are allowed: " + fileName
     );
 }
+@Component
+public class FileConversionUtil {
+
+    public byte[] convertBase64ToPdf(String base64) {
+        return Base64.getDecoder().decode(base64);
+    }
+
+    public String getFileNameWithoutExtension(String fileName) {
+        if (fileName == null) return "unknown";
+        return fileName.replace(".pdf", "").replace(".PDF", "");
+    }
+}

@@ -1,0 +1,14 @@
+private String resolveContentType(String fileName) {
+    String lower = fileName.toLowerCase();
+
+    if (lower.endsWith(".pdf")) {
+        return "application/pdf";
+    }
+
+    if (lower.endsWith(".txt")) {
+        return "text/plain";
+    }
+
+    // default fallback
+    return "application/octet-stream";
+}

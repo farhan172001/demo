@@ -12,3 +12,18 @@ private String resolveContentType(String fileName) {
     // default fallback
     return "application/octet-stream";
 }
+private String resolveContentType(String fileName) throws S3OperationException {
+    String lower = fileName.toLowerCase();
+
+    if (lower.endsWith(".pdf")) {
+        return "application/pdf";
+    }
+    if (lower.endsWith(".txt")) {
+        return "text/plain";
+    }
+
+    // ❌ Unsupported file type
+    throw new S3OperationException(
+            "Unsupported file format. Only PDF and TXT files are allowed: " + fileName
+    );
+}

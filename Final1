@@ -176,3 +176,18 @@ public class MetadataParserUtil {
         return line.split(",")[1].trim();
     }
 }
+@Component
+public class FileConversionUtil {
+
+    public byte[] convertBase64ToBytes(String base64, String fileName) throws ApplicationException {
+        try {
+            return Base64.getDecoder().decode(base64);
+        } catch (Exception e) {
+            throw new ApplicationException(
+                    "Failed to convert Base64 for file: " + fileName,
+                    e,
+                    ExceptionType.TECHNICAL
+            );
+        }
+    }
+}

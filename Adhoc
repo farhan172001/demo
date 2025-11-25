@@ -1,0 +1,25 @@
+@RestController
+@RequestMapping("/adhoc")
+@RequiredArgsConstructor
+public class AdhocController {
+
+    private final DocumentProcessingService documentProcessingService;
+
+    /**
+     * Test endpoint to process Base64 PDF + TXT metadata and trigger S3 upload + event.
+     * 
+     * Example:
+     * POST /adhoc/test-document
+     */
+    @PostMapping("/test-document")
+    public ResponseEntity<String> testDocumentProcessing(@RequestBody DocumentRequest request) {
+
+        try {
+            documentProcessingService.processDocument(request);
+            return ResponseEntity.ok("SUCCESS: Document processed end-to-end.");
+        } catch (ApplicationException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("FAILED: " + e.getMessage());
+        }
+    }
+}

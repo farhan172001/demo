@@ -32,3 +32,39 @@ public class AdhocController {
   "dataFileContentType": "application/pdf",
   "dataFileName": "input.pdf"
 }
+import software.amazon.awssdk.http.apache.internal.impl.ApacheSdkHttpClientFactory;
+import software.amazon.awssdk.http.TlsTrustManagersProvider;
+
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import java.security.cert.X509Certificate;
+
+public class TrustAllTrustManagerProvider implements TlsTrustManagersProvider {
+
+    @Override
+    public TrustManager[] trustManagers() {
+        return new TrustManager[]{
+            new X509TrustManager() {
+                public void checkClientTrusted(X509Certificate[] xcs, String string) {}
+
+                public void checkServerTrusted(X509Certificate[] xcs, String string) {}
+
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                }
+            }
+        };
+    }
+}
+@Bean
+@Primary
+public S3Client s3Client() {
+    return S3Client.builder()
+            .credentialsProvider(DefaultCredentialsProvider.create())
+            .region(Region.of(s3Region))
+            .httpClientBuilder(
+                ApacheHttpClient.builder()
+                    .tlsTrustManagersProvider(new TrustAllTrustManagerProvider())
+            )
+            .build();
+}

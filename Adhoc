@@ -72,3 +72,36 @@ public S3Client s3Client() {
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>apache-client</artifactId>
 </dependency>
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>apache-client</artifactId>
+</dependency>
+@Bean
+@Primary
+public S3Client s3Client() {
+    // Create a trust manager that accepts all certificates
+    TrustManager[] trustAllCerts = new TrustManager[]{
+        new X509TrustManager() {
+            public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+            public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+            public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+        }
+    };
+
+    try {
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, trustAllCerts, new SecureRandom());
+        
+        SdkHttpClient httpClient = ApacheHttpClient.builder()
+            .tlsTrustManagersProvider(() -> trustAllCerts)
+            .build();
+
+        return S3Client.builder()
+            .credentialsProvider(DefaultCredentialsProvider.create())
+            .region(Region.US_EAST_1)
+            .httpClient(httpClient)
+            .build();
+    } catch (Exception e) {
+        throw new RuntimeException("Failed to create S3Client", e);
+    }
+}

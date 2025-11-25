@@ -68,3 +68,7 @@ public S3Client s3Client() {
             )
             .build();
 }
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>apache-client</artifactId>
+</dependency>

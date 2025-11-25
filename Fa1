@@ -1,0 +1,158 @@
+@Component
+public class MetadataParserUtil {
+
+    public MetadataModel parseTxtToMetadata(String txtContent, String fileName) throws ApplicationException {
+        try {
+            MetadataModel.MetadataModelBuilder builder = MetadataModel.builder();
+
+            // Split text by semicolon or newline
+            String[] lines = txtContent.split("[;\\n]");
+
+            for (String rawLine : lines) {
+                String line = rawLine.trim();
+                if (line.isEmpty()) continue;
+
+                String key = getKey(line);
+                String value = getValue(line);
+
+                if (key == null || value == null) continue;
+
+                switch (key.toLowerCase()) {
+
+                    case "claimnumber":
+                        builder.claimNumber(value);
+                        break;
+
+                    case "certificatenumber":
+                        builder.certificateNumber(value);
+                        break;
+
+                    case "groupnumber":
+                        builder.groupNumber(value);
+                        break;
+
+                    case "corrtransactionid":
+                        builder.corrTransactionId(value);
+                        break;
+
+                    case "corrsubtransactionid":
+                        builder.corrSubTransactionId(value);
+                        break;
+
+                    case "eventname":
+                        builder.eventName(value);
+                        break;
+
+                    case "disbursementid":
+                        builder.disbursementId(value);
+                        break;
+
+                    case "documentclass":
+                        builder.documentClass(value);
+                        break;
+
+                    case "objectstore":
+                        builder.objectStore(value);
+                        break;
+
+                    case "acc":
+                        builder.acc(value);
+                        break;
+
+                    case "title":
+                        builder.title(value);
+                        break;
+
+                    default:
+                        // Unknown fields ignored safely
+                        break;
+                }
+            }
+
+            MetadataModel metadata = builder.build();
+
+            // Required fields (modify if needed)
+            if (metadata.getGroupNumber() == null ||
+                metadata.getCorrTransactionId() == null ||
+                metadata.getEventName() == null) {
+
+                throw new ApplicationException(
+                        "Metadata TXT missing required fields in file: " + fileName,
+                        null,
+                        ExceptionType.TECHNICAL
+                );
+            }
+
+            return metadata;
+
+        } catch (ApplicationException e) {
+            throw e;
+
+        } catch (Exception e) {
+            throw new ApplicationException(
+                    "Failed to parse metadata TXT file: " + fileName,
+                    e,
+                    ExceptionType.TECHNICAL
+            );
+        }
+    }
+
+    private String getKey(String line) {
+        String[] parts = line.split(",", 2);
+        return parts.length > 0 ? parts[0].trim() : null;
+    }
+
+    private String getValue(String line) {
+        String[] parts = line.split(",", 2);
+        return parts.length > 1 ? parts[1].trim() : null;
+    }
+}
+
+
+
+
+private String buildDestinationUri(String fileName, MetadataModel metadata) throws ApplicationException {
+
+    // Check for required fields
+    if (metadata.getGroupNumber() == null ||
+        metadata.getCorrTransactionId() == null ||
+        metadata.getEventName() == null) {
+
+        AppLogger.error(this.getClass(), "Missing required field");
+        throw new DataFormatException("Missing required field", null, ExceptionType.TECHNICAL);
+    }
+
+    return String.format(
+            "filenet://%s?"
+                    + "claimNumber=%s&"
+                    + "certificateNumber=%s&"
+                    + "groupNumber=%s&"
+                    + "corrTransactionId=%s&"
+                    + "corrSubTransactionId=%s&"
+                    + "eventName=%s&"
+                    + "disbursementId=%s&"
+                    + "documentClass=%s&"
+                    + "objectStore=%s&"
+                    + "acc=%s&"
+                    + "title=%s",
+
+            fileName,
+
+            safe(metadata.getClaimNumber()),
+            safe(metadata.getCertificateNumber()),
+            safe(metadata.getGroupNumber()),
+            safe(metadata.getCorrTransactionId()),
+            safe(metadata.getCorrSubTransactionId()),
+            safe(metadata.getEventName()),
+            safe(metadata.getDisbursementId()),
+            safe(metadata.getDocumentClass()),
+            safe(metadata.getObjectStore()),
+            safe(metadata.getAcc()),
+            safe(metadata.getTitle())
+    );
+}
+
+// Utility: avoids "null" in URL
+private String safe(String value) {
+    return value == null ? "" : value;
+}

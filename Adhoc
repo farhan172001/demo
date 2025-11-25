@@ -24,3 +24,11 @@ public class AdhocController {
     }
 }
 "GroupNumber, AGC0064216245;GroupName, SYST_WYN22.4.3 Group1; CorrTransact
+{
+  "metadataFileContent": "GroupNumber, AGC0064216245; GroupName, SYST_WYN22.4.3 Group1; CorrTransactionId, B1",
+  "metadataFileName": "metadata.txt",
+  
+  "dataFileContent": "JVBERi0xLjQKJeLjz9MKNCAwIG9iago8PC9MZW5ndGggNSAwIFIvRmlsdGVyL0ZsYXRlRGVjb2RlPj5zdHJlYW0KeAErKCkpCnN0cmVhbWVuZAplbmRvYmoK",
+  "dataFileContentType": "application/pdf",
+  "dataFileName": "input.pdf"
+}

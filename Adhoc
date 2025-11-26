@@ -105,3 +105,24 @@ public S3Client s3Client() {
         throw new RuntimeException("Failed to create S3Client", e);
     }
 }
+@Operation(summary = "Upload a file to S3")
+    @PostMapping(value = "/upload", consumes = "multipart/form-data")
+    public ResponseEntity<String> uploadFile(
+            @Parameter(
+                    description = "File to upload",
+                    content = @Content(mediaType = "multipart/form-data")
+            )
+            @RequestParam("file") MultipartFile file
+    ) throws IOException {
+
+        // 🔥 Directly writing service logic inside controller
+        s3Client.putObject(
+                PutObjectRequest.builder()
+                        .bucket(bucketName)
+                        .key(file.getOriginalFilename())
+                        .build(),
+                RequestBody.fromBytes(file.getBytes())
+        );
+
+        return ResponseEntity.ok("File uploaded successfully!");
+    }

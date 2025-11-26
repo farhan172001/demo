@@ -126,3 +126,18 @@ public S3Client s3Client() {
 
         return ResponseEntity.ok("File uploaded successfully!");
     }
+public byte() downloadFile(String key) { 1 usage
+
+ResponseBytes<GetObjectResponse> objectAsBytes =
+
+s3Client.getObjectAsBytes (GetObjectRequest.builder()
+
+.bucket(bucketName)
+
+.key(key)
+
+.build());
+
+return objectAsBytes.asByteArray();
+
+}

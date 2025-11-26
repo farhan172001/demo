@@ -141,3 +141,13 @@ s3Client.getObjectAsBytes (GetObjectRequest.builder()
 return objectAsBytes.asByteArray();
 
 }
+@GetMapping("/download/{fileName}")
+public ResponseEntity<byte[]> downloadFile(@PathVariable String fileName) {
+    byte[] fileBytes = s3Service.downloadFile(fileName);
+    String contentType = resolveContentType(fileName);
+
+    return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+            .contentType(MediaType.parseMediaType(contentType))
+            .body(fileBytes);
+}

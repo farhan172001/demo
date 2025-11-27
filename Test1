@@ -518,3 +518,305 @@ class S3ServiceTest {
         assertEquals(key, getReq.key());
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Using this 1st to convert bsse64 to pdf so need to write unit test this also write? And 2nd fileto mapping txt to model class: write unit test for both: code1: Component 2 usages
+
+public class FileConversionUtil {
+
+public byte[] convertBase64ToPdf (String base64, String fileName) throws ApplicationException { I
+
+try {
+
+return Base64.getDecoder().decode(base64);
+
+catch (Exception e) {
+
+throw new ApplicationException(
+
+"Failed to convert Base64 for file: " fileName,
+
+ExceptionType.TECHNICAL
+
+);}}} code2: Component 2 usages
+
+public class MetadataParserütil {
+
+public MetadataModel parseTxtToMetadata (String txtContent, String fileName) throws try 4
+
+ApplicationExceptio
+
+Retadatalodel.MetadataModelBuilder builder MetadataModel.builder();
+
+String[] lines txtContent.split(regax: "[;\n]");
+
+for (String rawLine: lines) {
+
+String line ranLine.trim();
+
+if (line.isEmpty()) continue;
+
+String key getkey (Line);
+
+String value getValue(Line);
+
+if (key == null || value == null) continue;
+
+switch (key.toLowerCase()) {
+
+case "clainnumber":
+
+builder.claimNumber(value); break;
+
+case "certificatenumber":case "certificatenumber":
+
+builder.certificateNumber(value);
+
+break;
+
+case "grpupnumber":
+
+builder.groupNumber(value);
+
+break;
+
+case "corrtransactionid":
+
+builder.corrTransactionId (value);
+
+break;
+
+case "corrsubtransactionid":
+
+builder.corrSubTransactionId(value);
+
+break;
+
+case "eventname":
+
+builder.eventName (value);
+
+break;
+
+case "disbursementid":
+
+builder.disbursementId(value);}
+
+case "disbursementid":
+
+builder.disbursementId (value);
+
+break;case "documentclass":
+
+builder.documentClass (value);
+
+break;
+
+case "objectstore":
+
+builder.objectStore (value);
+
+break;
+
+case "acc":
+
+builder.acc(value);
+
+break;
+
+I
+
+case "title":
+
+builder.title(value);
+
+break;
+
+default:
+
+break;}}MetadataModel metadata builder.build();
+
+if (metadata.getGroupNumber() == null || metadata.getCorrTransactionId() == null) {
+
+throw new ApplicationException(
+
+"Metadata TXT missing required fields in file: fileName, null,
+
+ExceptionType.TECHNICAL
+
+);
+
+}
+
+return metadata;
+
+catch (ApplicationException e) {
+
+throw e;
+
+} catch (Exception e) {
+
+throw new ApplicationException(
+
+"Failed to parse metadata TXT file: e, fileName,
+
+ExceptionType.TECHNICAL;
+
+}
+
+}
+
+private String getKey (String line) { 1 usage
+
+String[] parts line.split(regex: "", limit: 2);
+
+return parts.length > 0 ? parts[0].trim(): null;
+
+}
+
+private String getValue(String line) { 1 usage
+
+String[] parts = line.split(regex: ",", limit: 2);
+
+return parts.length > 1? parts [1].trim(): null; I
+
+}.
+
+
+
+
+
+
+
+
+
+
+code1: import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class FileConversionUtilTest {
+
+    private final FileConversionUtil util = new FileConversionUtil();
+
+    @Test
+    void testConvertBase64ToPdf_Success() throws Exception {
+        // Base64 of: "Hello PDF"
+        String base64 = Base64.getEncoder().encodeToString("Hello PDF".getBytes());
+
+        byte[] result = util.convertBase64ToPdf(base64, "test.pdf");
+
+        assertNotNull(result);
+        assertArrayEquals("Hello PDF".getBytes(), result);
+    }
+
+    @Test
+    void testConvertBase64ToPdf_InvalidBase64_ThrowsException() {
+        String invalidBase64 = "### invalid ###";
+
+        ApplicationException ex = assertThrows(
+            ApplicationException.class,
+            () -> util.convertBase64ToPdf(invalidBase64, "bad.pdf")
+        );
+
+        assertTrue(ex.getMessage().contains("Failed to convert Base64"));
+    }
+
+    @Test
+    void testConvertBase64ToPdf_NullBase64_ThrowsException() {
+        ApplicationException ex = assertThrows(
+            ApplicationException.class,
+            () -> util.convertBase64ToPdf(null, "null.pdf")
+        );
+
+        assertTrue(ex.getMessage().contains("Failed to convert Base64"));
+    }
+}
+
+
+
+
+
+
+code2: import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class MetadataParserUtilTest {
+
+    private final MetadataParserUtil util = new MetadataParserUtil();
+
+    @Test
+    void testParseTxtToMetadata_Success() throws Exception {
+        String txt =
+                "claimNumber:123\n" +
+                "certificateNumber:ABC\n" +
+                "groupNumber:G001\n" +
+                "corrTransactionId:TXN99\n" +
+                "title:Test Document";
+
+        MetadataModel metadata = util.parseTxtToMetadata(txt, "meta.txt");
+
+        assertEquals("123", metadata.getClaimNumber());
+        assertEquals("ABC", metadata.getCertificateNumber());
+        assertEquals("G001", metadata.getGroupNumber());
+        assertEquals("TXN99", metadata.getCorrTransactionId());
+        assertEquals("Test Document", metadata.getTitle());
+    }
+
+    @Test
+    void testParseTxtToMetadata_MissingRequiredFields_ThrowsException() {
+        String txt =
+                "claimNumber:999\n" +
+                "certificateNumber:KKK\n";
+        // Missing: groupNumber + corrTransactionId
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> util.parseTxtToMetadata(txt, "bad.txt")
+        );
+
+        assertTrue(ex.getMessage().contains("Metadata TXT missing required fields"));
+    }
+
+    @Test
+    void testParseTxtToMetadata_UnsupportedFormat_SkipLines() throws Exception {
+        String txt =
+                "invalidline\n" +             // no key:value → ignored
+                "claimNumber:123\n" +
+                "groupNumber:G001\n" +
+                "corrTransactionId:ABC";
+
+        MetadataModel metadata = util.parseTxtToMetadata(txt, "test.txt");
+
+        assertEquals("123", metadata.getClaimNumber());
+        assertEquals("G001", metadata.getGroupNumber());
+        assertEquals("ABC", metadata.getCorrTransactionId());
+    }
+
+    @Test
+    void testParseTxtToMetadata_ThrowsWrappedException() {
+        // Force split error or similar
+        String txt = null;
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> util.parseTxtToMetadata(txt, "meta.txt")
+        );
+
+        assertTrue(ex.getMessage().contains("Failed to parse metadata TXT file"));
+    }
+}

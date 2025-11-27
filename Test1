@@ -310,3 +310,211 @@ class S3ServiceTest {
         verify(s3Client, times(1)).getObjectAsBytes(any(GetObjectRequest.class));
     }
 }
+
+
+
+
+
+
+
+
+@ExtendWith(MockitoExtension.class)
+class S3ServiceTest {
+
+    @Mock
+    private S3Client s3Client;
+
+    @Mock
+    private S3Properties s3Properties;
+
+    @InjectMocks
+    private S3Service s3Service;
+
+    private static final String BUCKET_NAME = "test-bucket";
+
+    @BeforeEach
+    void setup() {
+        when(s3Properties.getBucketName()).thenReturn(BUCKET_NAME);
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testUploadFile_Success_PdfContentType() throws Exception {
+        byte[] mockData = "sample content".getBytes();
+        String fileName = "document.pdf";
+
+        PutObjectResponse expectedPutObjectResponse =
+                PutObjectResponse.builder().eTag("123").build();
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(expectedPutObjectResponse);
+
+        PutObjectResponse response = s3Service.uploadFile(fileName, mockData);
+
+        assertEquals("123", response.eTag());
+
+        ArgumentCaptor<PutObjectRequest> requestCaptor =
+                ArgumentCaptor.forClass(PutObjectRequest.class);
+
+        verify(s3Client, times(1))
+                .putObject(requestCaptor.capture(), any(RequestBody.class));
+
+        PutObjectRequest actualRequest = requestCaptor.getValue();
+
+        assertEquals(BUCKET_NAME, actualRequest.bucket());
+        assertEquals(fileName, actualRequest.key());
+        assertEquals(S3Service.PDF_CONTENT_TYPE, actualRequest.contentType());
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testUploadFile_Success_TxtContentType() throws Exception {
+        byte[] mockData = "text content".getBytes();
+        String fileName = "notes.txt";
+
+        PutObjectResponse expectedPutObjectResponse =
+                PutObjectResponse.builder().eTag("etag-456").build();
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(expectedPutObjectResponse);
+
+        PutObjectResponse response = s3Service.uploadFile(fileName, mockData);
+        assertEquals("etag-456", response.eTag());
+
+        ArgumentCaptor<PutObjectRequest> requestCaptor =
+                ArgumentCaptor.forClass(PutObjectRequest.class);
+
+        verify(s3Client, times(1))
+                .putObject(requestCaptor.capture(), any(RequestBody.class));
+
+        PutObjectRequest actualRequest = requestCaptor.getValue();
+
+        assertEquals(BUCKET_NAME, actualRequest.bucket());
+        assertEquals(fileName, actualRequest.key());
+        assertEquals(S3Service.TXT_CONTENT_TYPE, actualRequest.contentType());
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testUploadFile_EmptyFileName_ThrowsException() {
+        byte[] mockData = "sample content".getBytes();
+
+        S3OperationException ex = assertThrows(
+                S3OperationException.class,
+                () -> s3Service.uploadFile("", mockData)
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("filename"));
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testUploadFile_NullFileName_ThrowsException() {
+        byte[] mockData = "sample content".getBytes();
+
+        S3OperationException ex = assertThrows(
+                S3OperationException.class,
+                () -> s3Service.uploadFile(null, mockData)
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("filename"));
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testUploadFile_EmptyContent_ThrowsException() {
+        S3OperationException ex = assertThrows(
+                S3OperationException.class,
+                () -> s3Service.uploadFile("file.txt", new byte[0])
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("content"));
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testUploadFile_NullContent_ThrowsException() {
+
+        S3OperationException ex = assertThrows(
+                S3OperationException.class,
+                () -> s3Service.uploadFile("file.pdf", null)
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("content"));
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testUploadFile_AwsException_ThrowsWrappedException() {
+
+        byte[] mockData = "sample content".getBytes();
+        String fileName = "document.pdf";
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(AwsServiceException.builder().message("Aws error").build());
+
+        S3OperationException ex = assertThrows(
+                S3OperationException.class,
+                () -> s3Service.uploadFile(fileName, mockData)
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("failed to upload"));
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testResolveContentType_Pdf() throws Exception {
+        String contentType = s3Service.resolveContentType("file.PDF");
+        assertEquals(S3Service.PDF_CONTENT_TYPE, contentType);
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testResolveContentType_Txt() throws Exception {
+        String contentType = s3Service.resolveContentType("readme.txt");
+        assertEquals(S3Service.TXT_CONTENT_TYPE, contentType);
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testResolveContentType_Unsupported_ThrowsException() {
+
+        S3OperationException ex = assertThrows(
+                S3OperationException.class,
+                () -> s3Service.resolveContentType("image.png")
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("unsupported file format"));
+    }
+
+    // -----------------------------------------------------------
+    @Test
+    void testDownloadFile_Success() {
+
+        String key = "path/to/file.txt";
+        byte[] expectedBytes = "downloaded".getBytes();
+
+        ResponseBytes<GetObjectResponse> responseBytes =
+                ResponseBytes.fromByteArray(
+                        GetObjectResponse.builder().build(),
+                        expectedBytes
+                );
+
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .thenReturn(responseBytes);
+
+        byte[] actual = s3Service.downloadFile(key);
+        assertArrayEquals(expectedBytes, actual);
+
+        ArgumentCaptor<GetObjectRequest> getCaptor =
+                ArgumentCaptor.forClass(GetObjectRequest.class);
+
+        verify(s3Client, times(1))
+                .getObjectAsBytes(getCaptor.capture());
+
+        GetObjectRequest getReq = getCaptor.getValue();
+
+        assertEquals(BUCKET_NAME, getReq.bucket());
+        assertEquals(key, getReq.key());
+    }
+}

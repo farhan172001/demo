@@ -820,3 +820,59 @@ class MetadataParserUtilTest {
         assertTrue(ex.getMessage().contains("Failed to parse metadata TXT file"));
     }
 }
+
+
+
+
+
+
+correct code1: import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+import java.util.Base64;
+
+class FileConversionUtilTest {
+
+    private final FileConversionUtil util = new FileConversionUtil();
+
+    @Test
+    void testConvertBase64ToPdf_Success() throws Exception {
+        String base64 = Base64.getEncoder().encodeToString("Hello PDF".getBytes());
+
+        byte[] result = util.convertBase64ToPdf(base64, "test.pdf");
+
+        assertNotNull(result);
+        assertArrayEquals("Hello PDF".getBytes(), result);
+    }
+
+    @Test
+    void testConvertBase64ToPdf_InvalidBase64_ThrowsException() {
+        String invalidBase64 = "### invalid ###";
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> util.convertBase64ToPdf(invalidBase64, "bad.pdf")
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("failed to convert base64"));
+    }
+
+    @Test
+    void testConvertBase64ToPdf_NullBase64_ThrowsException() {
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> util.convertBase64ToPdf(null, "null.pdf")
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("failed"));
+    }
+
+    @Test
+    void testConvertBase64ToPdf_EmptyString_ReturnsEmptyBytes() throws Exception {
+
+        byte[] result = util.convertBase64ToPdf("", "empty.pdf");
+
+        assertNotNull(result);
+        assertEquals(0, result.length);
+    }
+}

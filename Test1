@@ -1,0 +1,312 @@
+I will share you the S3Service and S3Service Test code, you have to modify S3ServiceTest according to S3Service and in file name you have .pdf and .txt so resolve that also in unit test, WRITE UNIT TEST CASES: CODE1 S3ServiceTest: @ExtendWith(MockitoExtension.class)
+
+class S3ServiceTest {
+
+@Mock 3 usages
+
+private S3Client s3Client;
+
+@Mock 1 usage
+
+private S3Properties s3Properties;
+
+@InjectMocks 4 usages
+
+private S3Service s3Service;
+
+private static final String BUCKET_NAME = "test-bucket"; 1 usage
+
+private static final String FILE_NAME = ""; 3 usages
+
+@Test
+
+void testUploadFile_Success() throws Exception {
+
+byte[] mockData = "sample content".getBytes();
+
+I
+
+PutObjectResponse expected PutObjectResponse = PutObjectResponse.builder().eTag(s: "123").build();
+
+when (s3Properties.getBucketName()).thenReturn (BUCKET_NAME);
+
+when(s3Client.putObject(any(PutObjectRequest.class), any (RequestBody.class)))
+
+.thenReturn (expectedPutObjectResponse);
+
+PutObjectResponse response = s3Service.uploadFile(FILE_NAME, mockData);PutObjectResponse response s3Service.uploadFile(FILE NAME, mockData);
+
+assertEquals(expected: "123", response.eTag());
+
+verify(s3Client, times(wantedNumberOfInvocations: 1))
+
+putObject(any (PutObjectRequest.class), any (RequestBody.class));
+
+@Test
+
+void testUploadFile_EmptyFileName_Throws Exception() {
+
+byte[] mockData = "sample content".getBytes();
+
+assert Throws (S$30perationException.class, () -> s3Service, uploadFile(fileName: "", mockData));
+
+@Test
+
+void testUploadFile_EmptyContent_Throws Exception() {
+
+assertThrows (S30perationException.class, ()-> s3Service.uploadFile(FILE NAME, new byte[0]));
+
+}
+
+@Test
+
+void testUploadFile_AwsException_ThrowsWrappedException() throws Exception {
+
+byte[] mockData "sample content".getBytes();
+
+when(s3Client.putObject(any (PutObjectRequest.class), any (RequestBody.class))) then Throw (S3Exception.builder().message(s: "Aws error").build());assertThrows (S30perationException.class, () -> s3Service.uploadFile(FILE_NAME, mockData));}}. CODE2 S3service: @Service 30 usages
+
+@RequiredArgsConstructor
+
+public class S3Service {
+
+private final S3Client s3Client;
+
+private final S3Properties s3Properties;
+
+public PutobjectResponse uploadFile(String fileName, byte[] content) throws S30perationException { 2 usages
+
+if (fileName == null || fileName.isBlank()) {
+
+AppLogger.error(this.getClass(), msg: "Filename cannot be null or empty");
+
+throw new S30perationException("Filename cannot be null or empty", ExceptionType.TECHNICAL);
+
+}
+
+if (content == null || content.length == 0) {
+
+}
+
+AppLogger.error(this.getClass(), msg: "File content cannot be null or empty");
+
+throw new $30perationException("File content cannot be null or empty", ExceptionType.TECHNICAL);
+
+String contentType = resolveContentType(fileName);
+
+try {
+
+AppLogger.info(this.getClass(), msg: "Uploading file '{}' to S3 bucket '{}'", fileName, s3Properties.getBucketName());
+
+return s3Client.putObject(PutObjectRequest.builder()
+
+bucket(s3Properties.getBucketName())
+
+.key(fileName).key(fileName)
+
+.contentType(contentType)
+
+.build(),
+
+RequestBody.fromBytes(content));
+
+} catch (AwsServiceException e) {
+
+AppLogger.error(this.getClass(), msg: "Failed to upload the file {} to S3 bucket, Reason: {}", fileName, e.getMessage(), e);
+
+throw new S30perationException("Failed to upload file to S3 bucket", e, ExceptionType.TECHNICAL);
+
+}
+
+}
+
+@
+
+public String resolveContentType(String fileName) throws $30perationException { 2 usages
+
+String lower fileName.toLowerCase();
+
+if (lower.endsWith(".pdf")) {
+
+return PDF_CONTENT_TYPE;
+
+}
+
+if (lower.endsWith(".txt")) {
+
+return TXT_CONTENT_TYPE;
+
+}
+
+throw new S30perationException(
+
+);
+
+m
+
+"Unsupported file format. Only PDF and TXT files are allowed: + fileName, ExceptionType.TECHNICAL);}public byte[] downloadFile(String key) { 1 usage
+
+ResponseBytes<GetObjectResponse> objectAsBytes =
+
+s3Client.getObjectAsBytes(GetObjectRequest.builder()
+
+.bucket (s3Properties.getBucketName())
+
+}
+
+.key(key)
+
+.build());
+
+return objectAsBytes.asByteArray();
+
+
+
+
+
+
+
+@ExtendWith(MockitoExtension.class)
+class S3ServiceTest {
+
+    @Mock
+    private S3Client s3Client;
+
+    @Mock
+    private S3Properties s3Properties;
+
+    @InjectMocks
+    private S3Service s3Service;
+
+    private static final String BUCKET_NAME = "test-bucket";
+
+    @BeforeEach
+    void setup() {
+        when(s3Properties.getBucketName()).thenReturn(BUCKET_NAME);
+    }
+
+    // -------------------------------
+    // SUCCESS CASE
+    // -------------------------------
+    @Test
+    void testUploadFile_Success_PDF() throws Exception {
+        String fileName = "document.pdf";
+        byte[] content = "sample content".getBytes();
+
+        PutObjectResponse expected = PutObjectResponse.builder()
+                .eTag("123")
+                .build();
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(expected);
+
+        PutObjectResponse response = s3Service.uploadFile(fileName, content);
+
+        assertEquals("123", response.eTag());
+        verify(s3Client, times(1))
+                .putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    void testUploadFile_Success_TXT() throws Exception {
+        String fileName = "notes.txt";
+        byte[] content = "hello".getBytes();
+
+        PutObjectResponse expected = PutObjectResponse.builder()
+                .eTag("999")
+                .build();
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenReturn(expected);
+
+        PutObjectResponse response = s3Service.uploadFile(fileName, content);
+
+        assertEquals("999", response.eTag());
+    }
+
+    // -------------------------------
+    // FAILURE CASES
+    // -------------------------------
+    @Test
+    void testUploadFile_EmptyFileName_ThrowsException() {
+        byte[] content = "abc".getBytes();
+
+        assertThrows(
+                S3OperationException.class,
+                () -> s3Service.uploadFile("", content)
+        );
+    }
+
+    @Test
+    void testUploadFile_EmptyContent_ThrowsException() {
+        assertThrows(
+                S3OperationException.class,
+                () -> s3Service.uploadFile("file.pdf", new byte[0])
+        );
+    }
+
+    @Test
+    void testUploadFile_UnsupportedExtension_ThrowsException() {
+        byte[] content = "data".getBytes();
+
+        assertThrows(
+                S3OperationException.class,
+                () -> s3Service.uploadFile("image.jpg", content)
+        );
+    }
+
+    @Test
+    void testUploadFile_AwsException_ThrowsWrappedException() {
+        String fileName = "doc.pdf";
+        byte[] content = "test".getBytes();
+
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(S3Exception.builder().message("AWS Error").build());
+
+        assertThrows(
+                S3OperationException.class,
+                () -> s3Service.uploadFile(fileName, content)
+        );
+    }
+
+    // -------------------------------
+    // CONTENT-TYPE TESTING
+    // -------------------------------
+    @Test
+    void testResolveContentType_PDF() throws Exception {
+        assertEquals("application/pdf", s3Service.resolveContentType("test.PDF"));
+    }
+
+    @Test
+    void testResolveContentType_TXT() throws Exception {
+        assertEquals("text/plain", s3Service.resolveContentType("data.TXT"));
+    }
+
+    @Test
+    void testResolveContentType_Unsupported_ThrowsException() {
+        assertThrows(
+                S3OperationException.class,
+                () -> s3Service.resolveContentType("photo.jpeg")
+        );
+    }
+
+    // -------------------------------
+    // DOWNLOAD FILE
+    // -------------------------------
+    @Test
+    void testDownloadFile_Success() {
+        String key = "test.pdf";
+        byte[] mockContent = "downloaded".getBytes();
+
+        ResponseBytes<GetObjectResponse> responseBytes =
+                ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), mockContent);
+
+        when(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .thenReturn(responseBytes);
+
+        byte[] result = s3Service.downloadFile(key);
+
+        assertArrayEquals(mockContent, result);
+        verify(s3Client, times(1)).getObjectAsBytes(any(GetObjectRequest.class));
+    }
+}

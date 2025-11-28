@@ -967,3 +967,97 @@ class MetadataParserUtilTest {
         assertTrue(ex.getMessage().contains("Failed to parse metadata TXT file"));
     }
 }
+
+
+
+
+
+
+
+package com.aflac.eib.extream.content.util;
+
+import com.aflac.eib.extream.content.exception.ApplicationException;
+import com.aflac.eib.extream.content.model.MetadataModel;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class MetadataParserUtilTest {
+
+    private final MetadataParserUtil parser = new MetadataParserUtil();
+
+    @Test
+    void testParseTxtToMetadata_Success() throws Exception {
+
+        String txt =
+                "claimNumber, CLM123; " +
+                "certificateNumber, CERT456; " +
+                "groupNumber, GRP789; " +
+                "corrTransactionId, TID111; " +
+                "corrSubTransactionId, STID222; " +
+                "eventName, EVT; " +
+                "disbursementId, DISB; " +
+                "documentClass, DOC; " +
+                "objectStore, STORE; " +
+                "acc, ACC001; " +
+                "title, Sample Title";
+
+        MetadataModel result = parser.parseTxtToMetadata(txt, "sample.txt");
+
+        assertEquals("CLM123", result.getClaimNumber());
+        assertEquals("CERT456", result.getCertificateNumber());
+        assertEquals("GRP789", result.getGroupNumber());
+        assertEquals("TID111", result.getCorrTransactionId());
+        assertEquals("STID222", result.getCorrSubTransactionId());
+        assertEquals("EVT", result.getEventName());
+        assertEquals("DISB", result.getDisbursementId());
+        assertEquals("DOC", result.getDocumentClass());
+        assertEquals("STORE", result.getObjectStore());
+        assertEquals("ACC001", result.getAcc());
+        assertEquals("Sample Title", result.getTitle());
+    }
+
+    @Test
+    void testParseTxtToMetadata_MissingRequiredFields_ShouldThrowException() {
+
+        String txt =
+                "claimNumber, CLM123; " +
+                "certificateNumber, CERT456"; // missing groupNumber and corrTransactionId
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> parser.parseTxtToMetadata(txt, "invalid.txt")
+        );
+
+        assertTrue(ex.getMessage().contains("Metadata TXT missing required fields"));
+    }
+
+    @Test
+    void testParseTxtToMetadata_InvalidLineFormat_IgnoredSafely() throws Exception {
+
+        String txt =
+                "claimNumber, CLM123; " +
+                "groupNumber, GRP789; " +
+                "corrTransactionId, TID123; " +
+                "InvalidLineWithoutComma";
+
+        MetadataModel result = parser.parseTxtToMetadata(txt, "file.txt");
+
+        assertEquals("GRP789", result.getGroupNumber());
+        assertEquals("TID123", result.getCorrTransactionId());
+        assertEquals("CLM123", result.getClaimNumber());
+    }
+
+    @Test
+    void testParseTxtToMetadata_ExceptionHandling() {
+
+        // this will cause NullPointer / unexpected exception inside parser
+        String txt = null;
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> parser.parseTxtToMetadata(txt, "error.txt")
+        );
+
+        assertTrue(ex.getMessage().contains("Failed to parse metadata TXT file"));
+    }
+}

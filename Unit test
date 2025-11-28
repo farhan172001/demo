@@ -719,3 +719,309 @@ class EExstreamContentServiceTest {
                 () -> service.processDocument(request));
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class EExstreamContentServiceTest {
+
+    private S3Service s3Service;
+    private FileTransferEventService fileTransferEventService;
+    private MetadataParserUtil metadataParserUtil;
+    private FileConversionUtil fileConversionUtil;
+
+    private EExstreamContentService service;
+
+    @BeforeEach
+    void setup() {
+        s3Service = mock(S3Service.class);
+        fileTransferEventService = mock(FileTransferEventService.class);
+        metadataParserUtil = mock(MetadataParserUtil.class);
+        fileConversionUtil = mock(FileConversionUtil.class);
+
+        service = new EExstreamContentService(
+                s3Service,
+                fileTransferEventService,
+                metadataParserUtil,
+                fileConversionUtil
+        );
+    }
+
+    private PutObjectResponse ok() {
+        SdkHttpResponse http = mock(SdkHttpResponse.class);
+        when(http.isSuccessful()).thenReturn(true);
+
+        PutObjectResponse resp = mock(PutObjectResponse.class);
+        when(resp.sdkHttpResponse()).thenReturn(http);
+
+        return resp;
+    }
+
+    private PutObjectResponse notok() {
+        SdkHttpResponse http = mock(SdkHttpResponse.class);
+        when(http.isSuccessful()).thenReturn(false);
+
+        PutObjectResponse resp = mock(PutObjectResponse.class);
+        when(resp.sdkHttpResponse()).thenReturn(http);
+
+        return resp;
+    }
+
+    private DocumentRequest req() {
+        DocumentRequest r = new DocumentRequest();
+        r.setDataFileName("file.pdf");
+        r.setDataFileContent("BASE64");
+        r.setMetadataFileName("file.txt");
+        r.setMetadataFileContent("groupNumber:G1\ncorrTransactionId:T1");
+        return r;
+    }
+
+    @Test
+    void success_happyPath() throws Exception {
+        DocumentRequest r = req();
+
+        byte[] pdf = "PDF".getBytes(StandardCharsets.UTF_8);
+
+        when(fileConversionUtil.convertBase64ToPdf(
+                r.getDataFileContent(),
+                r.getDataFileName()
+        )).thenReturn(pdf);
+
+        MetadataModel md = MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .build();
+
+        when(metadataParserUtil.parseTxtToMetadata(
+                r.getMetadataFileContent(),
+                r.getMetadataFileName()
+        )).thenReturn(md);
+
+        when(s3Service.uploadFile(r.getDataFileName(), pdf)).thenReturn(ok());
+        when(s3Service.uploadFile(
+                r.getMetadataFileName(),
+                r.getMetadataFileContent().getBytes(StandardCharsets.UTF_8)
+        )).thenReturn(ok());
+
+        assertDoesNotThrow(() -> service.processDocument(r));
+
+        verify(fileTransferEventService, times(1))
+                .publishFileTransferEvent(r.getDataFileName(), md);
+    }
+
+    @Test
+    void fails_whenPdfConversionFails() throws Exception {
+        DocumentRequest r = req();
+
+        when(fileConversionUtil.convertBase64ToPdf(anyString(), anyString()))
+                .thenThrow(new ApplicationException("convert fail", null, null));
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> service.processDocument(r)
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("file upload process failed"));
+        verifyNoInteractions(s3Service, fileTransferEventService);
+    }
+
+    @Test
+    void fails_whenMetadataParsingFails() throws Exception {
+        DocumentRequest r = req();
+
+        when(fileConversionUtil.convertBase64ToPdf(
+                r.getDataFileContent(),
+                r.getDataFileName()
+        )).thenReturn("PDF".getBytes(StandardCharsets.UTF_8));
+
+        when(metadataParserUtil.parseTxtToMetadata(
+                r.getMetadataFileContent(),
+                r.getMetadataFileName()
+        )).thenThrow(new ApplicationException("parse fail", null, null));
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> service.processDocument(r)
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("file upload process failed"));
+        verifyNoInteractions(s3Service, fileTransferEventService);
+    }
+
+    @Test
+    void fails_whenDataUploadNullResponse() throws Exception {
+        DocumentRequest r = req();
+
+        when(fileConversionUtil.convertBase64ToPdf(
+                r.getDataFileContent(),
+                r.getDataFileName()
+        )).thenReturn("PDF".getBytes(StandardCharsets.UTF_8));
+
+        when(metadataParserUtil.parseTxtToMetadata(
+                r.getMetadataFileContent(),
+                r.getMetadataFileName()
+        )).thenReturn(MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .build()
+        );
+
+        when(s3Service.uploadFile(r.getDataFileName(), "PDF".getBytes(StandardCharsets.UTF_8)))
+                .thenReturn(null);
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> service.processDocument(r)
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("file upload process failed"));
+
+        verify(fileTransferEventService, never())
+                .publishFileTransferEvent(anyString(), any());
+    }
+
+    @Test
+    void fails_whenDataUploadHttpNotSuccessful() throws Exception {
+        DocumentRequest r = req();
+
+        when(fileConversionUtil.convertBase64ToPdf(
+                r.getDataFileContent(),
+                r.getDataFileName()
+        )).thenReturn("PDF".getBytes(StandardCharsets.UTF_8));
+
+        when(metadataParserUtil.parseTxtToMetadata(
+                r.getMetadataFileContent(),
+                r.getMetadataFileName()
+        )).thenReturn(MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .build()
+        );
+
+        when(s3Service.uploadFile(
+                r.getDataFileName(),
+                "PDF".getBytes(StandardCharsets.UTF_8)
+        )).thenReturn(notok());
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> service.processDocument(r)
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("file upload process failed"));
+
+        verify(fileTransferEventService, never())
+                .publishFileTransferEvent(anyString(), any());
+    }
+
+    @Test
+    void fails_whenMetadataUploadNotSuccessful() throws Exception {
+        DocumentRequest r = req();
+
+        when(fileConversionUtil.convertBase64ToPdf(
+                r.getDataFileContent(),
+                r.getDataFileName()
+        )).thenReturn("PDF".getBytes(StandardCharsets.UTF_8));
+
+        when(metadataParserUtil.parseTxtToMetadata(
+                r.getMetadataFileContent(),
+                r.getMetadataFileName()
+        )).thenReturn(MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .build()
+        );
+
+        // Case 1: metadata upload = null
+        when(s3Service.uploadFile(r.getDataFileName(), "PDF".getBytes(StandardCharsets.UTF_8)))
+                .thenReturn(ok());
+
+        when(s3Service.uploadFile(
+                r.getMetadataFileName(),
+                r.getMetadataFileContent().getBytes(StandardCharsets.UTF_8)
+        )).thenReturn(null);
+
+        ApplicationException ex1 = assertThrows(
+                ApplicationException.class,
+                () -> service.processDocument(r)
+        );
+
+        assertTrue(ex1.getMessage().toLowerCase().contains("file upload process failed"));
+
+        verify(fileTransferEventService, never())
+                .publishFileTransferEvent(anyString(), any());
+
+        // Case 2: metadata upload = HTTP unsuccessful
+        reset(s3Service);
+
+        when(s3Service.uploadFile(r.getDataFileName(), "PDF".getBytes(StandardCharsets.UTF_8)))
+                .thenReturn(ok());
+
+        when(s3Service.uploadFile(
+                r.getMetadataFileName(),
+                r.getMetadataFileContent().getBytes(StandardCharsets.UTF_8)
+        )).thenReturn(notok());
+
+        ApplicationException ex2 = assertThrows(
+                ApplicationException.class,
+                () -> service.processDocument(r)
+        );
+
+        assertTrue(ex2.getMessage().toLowerCase().contains("file upload process failed"));
+
+        verify(fileTransferEventService, never())
+                .publishFileTransferEvent(anyString(), any());
+    }
+
+    @Test
+    void fails_whenFileTransferEventPublishingFails() throws Exception {
+        DocumentRequest r = req();
+
+        when(fileConversionUtil.convertBase64ToPdf(
+                r.getDataFileContent(),
+                r.getDataFileName()
+        )).thenReturn("PDF".getBytes(StandardCharsets.UTF_8));
+
+        MetadataModel md = MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .build();
+
+        when(metadataParserUtil.parseTxtToMetadata(
+                r.getMetadataFileContent(),
+                r.getMetadataFileName()
+        )).thenReturn(md);
+
+        when(s3Service.uploadFile(
+                r.getDataFileName(),
+                "PDF".getBytes(StandardCharsets.UTF_8)
+        )).thenReturn(ok());
+
+        when(s3Service.uploadFile(
+                r.getMetadataFileName(),
+                r.getMetadataFileContent().getBytes(StandardCharsets.UTF_8)
+        )).thenReturn(ok());
+
+        doThrow(new ApplicationException("event fail", null, null))
+                .when(fileTransferEventService)
+                .publishFileTransferEvent(r.getDataFileName(), md);
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> service.processDocument(r)
+        );
+
+        assertTrue(ex.getMessage().toLowerCase().contains("file upload process failed"));
+    }
+}

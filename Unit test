@@ -284,3 +284,218 @@ class FileTransferEventServiceTest {
         return (String) method.invoke(service, f, m);
     }
 }
+
+
+
+
+
+
+import com.aflac.eib.extream.content.exception.ApplicationException;
+import com.aflac.eib.extream.content.model.FileTransferEvent;
+import com.aflac.eib.extream.content.model.FileTransferRequest;
+import com.aflac.eib.extream.content.model.MetadataModel;
+import com.aflac.eib.extream.content.producer.ExtreamContentFileTransferProducer;
+import com.aflac.eib.extream.content.properties.S3Properties;
+import com.aflac.eib.extream.content.service.FileTransferEventService;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class FileTransferEventServiceTest {
+
+    private S3Properties s3Properties;
+    private ExtreamContentFileTransferProducer producer;
+    private FileTransferEventService service;
+
+    @BeforeEach
+    void setup() {
+        s3Properties = mock(S3Properties.class);
+        producer = mock(ExtreamContentFileTransferProducer.class);
+        service = new FileTransferEventService(s3Properties, producer);
+    }
+
+    @Test
+    void publishFileTransferEvent_Success_SendsProducerWithCorrectEvent() throws Exception {
+
+        // Arrange
+        when(s3Properties.getBucketName()).thenReturn("my-bucket");
+        String key = "folder/file.pdf";
+
+        MetadataModel metadata = MetadataModel.builder()
+                .claimNumber("CLM-1")
+                .certificateNumber("CERT-2")
+                .groupNumber("6001")
+                .corrTransactionId("TXN-999")
+                .corrSubTransactionId("SUB-1")
+                .eventName("UPLOAD")
+                .disbursementId("D-5")
+                .documentClass("DOC")
+                .objectStore("STORE-1")
+                .acc("ACC-7")
+                .title("My File")
+                .build();
+
+        // Act
+        service.publishFileTransferEvent(key, metadata);
+
+        // Assert
+        ArgumentCaptor<FileTransferEvent> eventCaptor = ArgumentCaptor.forClass(FileTransferEvent.class);
+        verify(producer, times(1)).send(eventCaptor.capture());
+
+        FileTransferEvent event = eventCaptor.getValue();
+        assertNotNull(event);
+
+        FileTransferRequest req = event.getFileTransferRequest();
+        assertNotNull(req);
+
+        // Validate Source URI
+        assertEquals("s3://my-bucket/folder/file.pdf", req.getSourceURI());
+
+        // Validate Destination URI
+        List<String> dests = req.getDestinationURIs();
+        assertNotNull(dests);
+        assertEquals(1, dests.size());
+
+        String destination = dests.get(0);
+        assertTrue(destination.startsWith("filenet://folder/file.pdf?"),
+                "Destination must start with filenet://<fileName>?");
+
+        // Check query params presence
+        assertTrue(destination.contains("claimNumber=CLM-1"));
+        assertTrue(destination.contains("certificateNumber=CERT-2"));
+        assertTrue(destination.contains("groupNumber=6001"));
+        assertTrue(destination.contains("corrTransactionId=TXN-999"));
+        assertTrue(destination.contains("corrSubTransactionId=SUB-1"));
+        assertTrue(destination.contains("eventName=UPLOAD"));
+        assertTrue(destination.contains("disbursementId=D-5"));
+        assertTrue(destination.contains("documentClass=DOC"));
+        assertTrue(destination.contains("objectStore=STORE-1"));
+        assertTrue(destination.contains("acc=ACC-7"));
+        assertTrue(destination.contains("title=My File"));
+
+        // Response required flag is TRUE
+        assertEquals(Boolean.TRUE, req.getIsResponseRequired());
+    }
+
+    @Test
+    void publishFileTransferEvent_ProducerThrows_WrapsInApplicationException() throws Exception {
+
+        when(s3Properties.getBucketName()).thenReturn("bucket");
+        String key = "file.txt";
+
+        MetadataModel metadata = MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .build();
+
+        doThrow(new RuntimeException("Kafka down"))
+                .when(producer).send(any(FileTransferEvent.class));
+
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> service.publishFileTransferEvent(key, metadata));
+
+        assertTrue(ex.getMessage().toLowerCase().contains("failed to publish file transfer event"));
+    }
+
+    @Test
+    void publishFileTransferEvent_MissingBucket_ThrowsApplicationException() {
+
+        when(s3Properties.getBucketName()).thenReturn(null);
+
+        MetadataModel metadata = MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .build();
+
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> service.publishFileTransferEvent("file.pdf", metadata));
+
+        assertTrue(ex.getMessage().toLowerCase().contains("failed to publish file transfer event"));
+    }
+
+    @Test
+    void publishFileTransferEvent_NullKey_ThrowsApplicationException() {
+
+        when(s3Properties.getBucketName()).thenReturn("bucket");
+
+        MetadataModel metadata = MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .build();
+
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> service.publishFileTransferEvent(null, metadata));
+
+        assertTrue(ex.getMessage().toLowerCase().contains("failed to publish file transfer event"));
+    }
+
+    @Test
+    void publishFileTransferEvent_MissingRequiredMetadataFields_ThrowsApplicationException() {
+
+        when(s3Properties.getBucketName()).thenReturn("bucket");
+        String key = "doc.pdf";
+
+        MetadataModel metadataMissingGroup = MetadataModel.builder()
+                .corrTransactionId("TXN-1")
+                .build();
+
+        ApplicationException ex1 = assertThrows(ApplicationException.class,
+                () -> service.publishFileTransferEvent(key, metadataMissingGroup));
+
+        assertTrue(ex1.getMessage().toLowerCase().contains("failed to publish file transfer event"));
+
+        MetadataModel metadataMissingTxn = MetadataModel.builder()
+                .groupNumber("G-2")
+                .build();
+
+        ApplicationException ex2 = assertThrows(ApplicationException.class,
+                () -> service.publishFileTransferEvent(key, metadataMissingTxn));
+
+        assertTrue(ex2.getMessage().toLowerCase().contains("failed to publish file transfer event"));
+    }
+
+    @Test
+    void publishFileTransferEvent_NullOptionalFields_AreSafelyBlankInDestinationUri() throws Exception {
+
+        when(s3Properties.getBucketName()).thenReturn("bucket");
+        String key = "a/b/c.txt";
+
+        MetadataModel metadata = MetadataModel.builder()
+                .groupNumber("G9")
+                .corrTransactionId("TX9")
+                .claimNumber(null)
+                .certificateNumber(null)
+                .corrSubTransactionId(null)
+                .eventName(null)
+                .disbursementId(null)
+                .documentClass(null)
+                .objectStore(null)
+                .acc(null)
+                .title(null)
+                .build();
+
+        service.publishFileTransferEvent(key, metadata);
+
+        ArgumentCaptor<FileTransferEvent> captor = ArgumentCaptor.forClass(FileTransferEvent.class);
+        verify(producer).send(captor.capture());
+
+        String dest = captor.getValue().getFileTransferRequest().getDestinationURIs().get(0);
+
+        // Optional fields should appear as empty strings
+        assertTrue(dest.contains("claimNumber="));
+        assertTrue(dest.contains("certificateNumber="));
+        assertTrue(dest.contains("corrSubTransactionId="));
+        assertTrue(dest.contains("eventName="));
+        assertTrue(dest.contains("disbursementId="));
+        assertTrue(dest.contains("documentClass="));
+        assertTrue(dest.contains("objectStore="));
+        assertTrue(dest.contains("acc="));
+        assertTrue(dest.contains("title="));
+    }
+}

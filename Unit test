@@ -499,3 +499,223 @@ class FileTransferEventServiceTest {
         assertTrue(dest.contains("title="));
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+Write unit testcases for this: @Service 25 usages
+
+@RequiredArgsConstructor
+
+public class EExstreamContentService {
+
+private final S3Service s3Service;
+
+private final-FileTransferEventService fileTransferEventService;
+
+private final MetadataParserUtil metadataParserUtil;
+
+private final FileConversionUtil fileConversionUtil;
+
+public void processDocument(DocumentRequest documentRequest) throws ApplicationException{ 1 usage
+
+try{
+
+byte[] pdfBytes = fileConversionUtil.convertBase64ToPdf(
+
+documentRequest.getDataFileContent(), ); documentRequest.getDataFileName()
+
+MetadataModel metadata métadataParserUtil.parseTxtToMetadata( documentRequest.getMetadataFileContent(), documentRequest.getMetadataFileName() );PutObjectResponse putObjectResponse2 = s3Service.uploadFile(documentRequest.getMetadataFileName(),if (putObjectResponse1 == null || putObjectResponse1.sdkHttpResponse() == null
+
+||putObjectResponse1.sdkHttpResponse().isSuccessful() || putobjectResponse2 == null || putObjectResponse2.sdkHttpResponse() == null|| !putObjectResponse2.sdkHttpResponse().isSuccessful()) {
+
+AppLogger.error(this.getClass(), msg: "File upload to S3 failed");
+
+throw new ApplicationException("File upload to S3 failed", null, ExceptionType.TECHNICAL);
+
+fileTransferEventService.publishFileTransferEvent(documentRequest.getDataFileName(), metadata);
+
+AppLogger.info(this.getClass(), msg: "Files uploaded to S3 bucket and file transfer event published");
+
+} catch (ApplicationException e) {
+
+AppLogger.error(this.getClass(), msg: "File upload process failed. Reason: {}", e.getMessage(), e);
+
+throw new ApplicationException("File upload process failed", e, ExceptionType.TECHNICAL);}}} documentRequest.getMetadataFileContent().getBytes(StandardCharsets.UTF_8));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.nio.charset.StandardCharsets;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class EExstreamContentServiceTest {
+
+    private S3Service s3Service;
+    private FileTransferEventService fileTransferEventService;
+    private MetadataParserUtil metadataParserUtil;
+    private FileConversionUtil fileConversionUtil;
+
+    private EExstreamContentService service;
+
+    @BeforeEach
+    void setup() {
+        s3Service = mock(S3Service.class);
+        fileTransferEventService = mock(FileTransferEventService.class);
+        metadataParserUtil = mock(MetadataParserUtil.class);
+        fileConversionUtil = mock(FileConversionUtil.class);
+
+        service = new EExstreamContentService(
+                s3Service,
+                fileTransferEventService,
+                metadataParserUtil,
+                fileConversionUtil
+        );
+    }
+
+    private DocumentRequest sampleRequest() {
+        DocumentRequest req = new DocumentRequest();
+        req.setDataFileName("doc.pdf");
+        req.setMetadataFileName("meta.txt");
+        req.setDataFileContent("BASE64_DATA");
+        req.setMetadataFileContent("key=value");
+        return req;
+    }
+
+    // SUCCESS FLOW
+    @Test
+    void processDocument_Success() throws Exception {
+
+        DocumentRequest request = sampleRequest();
+
+        byte[] pdfBytes = "PDF_BYTES".getBytes(StandardCharsets.UTF_8);
+        MetadataModel metadata = MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("TXN")
+                .build();
+
+        when(fileConversionUtil.convertBase64ToPdf(anyString(), anyString()))
+                .thenReturn(pdfBytes);
+
+        when(metadataParserUtil.parseTxtToMetadata(anyString(), anyString()))
+                .thenReturn(metadata);
+
+        PutObjectResponse okResponse = mock(PutObjectResponse.class);
+        when(okResponse.sdkHttpResponse()).thenReturn(mock(SdkHttpResponse.class));
+        when(okResponse.sdkHttpResponse().isSuccessful()).thenReturn(true);
+
+        when(s3Service.uploadFile(eq("doc.pdf"), eq(pdfBytes))).thenReturn(okResponse);
+        when(s3Service.uploadFile(eq("meta.txt"), any())).thenReturn(okResponse);
+
+        // Act
+        service.processDocument(request);
+
+        // Assert → Event triggered
+        verify(fileTransferEventService, times(1))
+                .publishFileTransferEvent("doc.pdf", metadata);
+    }
+
+    // Base64 → PDF conversion failure
+    @Test
+    void processDocument_ConvertPdfFails_ThrowsApplicationException() throws Exception {
+
+        DocumentRequest request = sampleRequest();
+
+        when(fileConversionUtil.convertBase64ToPdf(anyString(), anyString()))
+                .thenThrow(new ApplicationException("convert failed", null, ExceptionType.TECHNICAL));
+
+        assertThrows(ApplicationException.class,
+                () -> service.processDocument(request));
+    }
+
+    // Metadata TXT parsing failure
+    @Test
+    void processDocument_ParseMetadataFails_ThrowsApplicationException() throws Exception {
+
+        DocumentRequest request = sampleRequest();
+
+        when(fileConversionUtil.convertBase64ToPdf(anyString(), anyString()))
+                .thenReturn("PDF".getBytes());
+
+        when(metadataParserUtil.parseTxtToMetadata(anyString(), anyString()))
+                .thenThrow(new ApplicationException("parse failed", null, ExceptionType.TECHNICAL));
+
+        assertThrows(ApplicationException.class,
+                () -> service.processDocument(request));
+    }
+
+    // S3 upload failure
+    @Test
+    void processDocument_S3UploadFails_ThrowsApplicationException() throws Exception {
+
+        DocumentRequest request = sampleRequest();
+
+        when(fileConversionUtil.convertBase64ToPdf(anyString(), anyString()))
+                .thenReturn("PDF".getBytes());
+
+        when(metadataParserUtil.parseTxtToMetadata(anyString(), anyString()))
+                .thenReturn(MetadataModel.builder().groupNumber("G1").corrTransactionId("T1").build());
+
+        PutObjectResponse badResponse = mock(PutObjectResponse.class);
+        when(badResponse.sdkHttpResponse()).thenReturn(mock(SdkHttpResponse.class));
+        when(badResponse.sdkHttpResponse().isSuccessful()).thenReturn(false);
+
+        when(s3Service.uploadFile(anyString(), any())).thenReturn(badResponse);
+
+        assertThrows(ApplicationException.class,
+                () -> service.processDocument(request));
+    }
+
+    // FileTransferEventService throws – should wrap exception
+    @Test
+    void processDocument_EventPublishFails_ThrowsApplicationException() throws Exception {
+
+        DocumentRequest request = sampleRequest();
+
+        when(fileConversionUtil.convertBase64ToPdf(anyString(), anyString()))
+                .thenReturn("PDF".getBytes());
+
+        MetadataModel metadata = MetadataModel.builder()
+                .groupNumber("G1").corrTransactionId("TX").build();
+
+        when(metadataParserUtil.parseTxtToMetadata(anyString(), anyString()))
+                .thenReturn(metadata);
+
+        PutObjectResponse okResp = mock(PutObjectResponse.class);
+        when(okResp.sdkHttpResponse()).thenReturn(mock(SdkHttpResponse.class));
+        when(okResp.sdkHttpResponse().isSuccessful()).thenReturn(true);
+
+        when(s3Service.uploadFile(anyString(), any())).thenReturn(okResp);
+
+        doThrow(new ApplicationException("kafka fail", null, ExceptionType.TECHNICAL))
+                .when(fileTransferEventService)
+                .publishFileTransferEvent(anyString(), any());
+
+        assertThrows(ApplicationException.class,
+                () -> service.processDocument(request));
+    }
+}

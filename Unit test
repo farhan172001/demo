@@ -1,0 +1,286 @@
+Write unit test cases for this service: code : Service: 2 usages
+
+@RequiredArgsConstructor
+
+public class FileTransferEventService {
+
+private final S3Properties s3Properties;
+
+private final ExtreamContentFileTransferProducer fileTransferProducer;
+
+public void publishFileTransferEvent(String key, RetadataModel metadata) throws ApplicationException {
+
+try {
+
+String sourceuri buildSourceUri(key);
+
+String destinationuri buildDestinationUri(key, metadata);
+
+FileTransferRequest updatedFileTransferRequest FileTransferRequest.builder()
+
+sourceURI(sourceuri)
+
+destinationURIs(List.of(destinationuri))
+
+isresponseRequired (Boolean. TRUE)
+
+.build();
+
+FileTransferEvent event FileTransferEvent.builder()
+
+fileTransferRequest(updated FileTransferRequest)
+
+.build();
+
+fileTransferProducer.send(event);
+
+AppLogger.info(this.getClass(), msg: "File transfer event published. Source: 1, Destination: ()"
+
+sourceüri, destinationUri);
+
+} catch (Exception e)(AppLogger.error(this.getClass(), msg "Failed to publish file transfer event. Reason: ()", e.getMessage
+
+throw new ApplicationException("Failed to publish file transfer event", e, ExceptionType.TECHNICAL);
+
+private String buildSourceUri(string filename) throws ApplicationException { Tusage
+
+String bucketllame $3Properties.getBucketName();
+
+if (bucketName= null || filename == null) {
+
+AppLogger.error(this.getClass(), msg "Missing required S3 properties");
+
+throw new DataFormatException("Missing required 53 properties, null, ExceptionType.TECHNICAL);
+
+return String.format("s://%s/%s", bucketName, filename);
+
+
+}
+
+private String buildDestinationUri(String fileName, Metadatañadel netadata)
+
+if (metadata.getGroupNumber() == πυλί 11
+
+throws ApplicationException { usage
+
+metadata.getCorrTransactionId() NULL)
+
+AppLogger.error(this.getClass(), msg: "Missing required field");
+
+I
+
+throw new DateFormatException("Missing required field", null, ExceptionType. TECHNICAL);}return String.format(
+
+"filenet://%s?"
+
+"claimNumber=%s&"
+
+"certificateNumber=%s&"
+
+
+"group Number=%s&"
+
+"corrTransactionId=%s&"
+
+"corrSubTransactionId=%s&"
+
+"eventName=%s&"
+
+"disbursementId=%s&"
+
+"documentClass=%s&"
+
+"objectStore=%s&"
+
+"acc=%s&"
+
+"title=%s",
+
+
+fileName,
+
+safe(metadata.getClaimNumber()),
+
+safe(metadata.getCertificateNumber()),
+
+safe(metadata.getGroupNumber()),
+
+safe(metadata.getCorrTransactionId()),
+
+safe(metadata.getCorrSubTransactionId(),
+
+safe(metadata.getEventName()),
+
+safe(metadata.getDisbursementId()),
+
+safe(metadata.getDocumentClass()),
+
+safe(metadata.getObjectStore()),
+
+safe(metadata.getAcc()),safe(metadata.getTitle())
+
+private String safe (String value) { return value == null ? "": value; }
+
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class FileTransferEventServiceTest {
+
+    private S3Properties s3Properties;
+    private ExtreamContentFileTransferProducer producer;
+    private FileTransferEventService service;
+
+    @BeforeEach
+    void setUp() {
+        s3Properties = mock(S3Properties.class);
+        producer = mock(ExtreamContentFileTransferProducer.class);
+        service = new FileTransferEventService(s3Properties, producer);
+
+        when(s3Properties.getBucketName()).thenReturn("test-bucket");
+    }
+
+    // ---------------------------------------------------------------------
+    // TEST 1: publishFileTransferEvent SUCCESS
+    // ---------------------------------------------------------------------
+    @Test
+    void testPublishFileTransferEvent_Success() throws Exception {
+        // Arrange metadata
+        MetadataModel metadata = MetadataModel.builder()
+                .claimNumber("C1")
+                .certificateNumber("CERT1")
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .corrSubTransactionId("ST1")
+                .eventName("EVT")
+                .disbursementId("D1")
+                .documentClass("DOC")
+                .objectStore("OS")
+                .acc("ACC")
+                .title("Title")
+                .build();
+
+        // Act
+        service.publishFileTransferEvent("file.txt", metadata);
+
+        // Assert event sent to producer
+        ArgumentCaptor<FileTransferEvent> captor = ArgumentCaptor.forClass(FileTransferEvent.class);
+        verify(producer, times(1)).send(captor.capture());
+
+        FileTransferEvent event = captor.getValue();
+        assertNotNull(event);
+        assertNotNull(event.getFileTransferRequest());
+        assertEquals(1, event.getFileTransferRequest().getDestinationURIs().size());
+        assertTrue(event.getFileTransferRequest().isResponseRequired());
+    }
+
+    // ---------------------------------------------------------------------
+    // TEST 2: publishFileTransferEvent FAILURE WHEN PRODUCER THROWS
+    // ---------------------------------------------------------------------
+    @Test
+    void testPublishFileTransferEvent_ProducerThrowsException() throws Exception {
+        MetadataModel metadata = MetadataModel.builder()
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .build();
+
+        doThrow(new RuntimeException("Kafka Down"))
+                .when(producer).send(any());
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> service.publishFileTransferEvent("file.txt", metadata)
+        );
+
+        assertTrue(ex.getMessage().contains("Failed to publish file transfer event"));
+    }
+
+    // ---------------------------------------------------------------------
+    // TEST 3: buildSourceUri SUCCESS
+    // ---------------------------------------------------------------------
+    @Test
+    void testBuildSourceUri_Success() throws Exception {
+        String result = invokeBuildSourceUri("abc.txt");
+        assertEquals("s://test-bucket/abc.txt", result);
+    }
+
+    // ---------------------------------------------------------------------
+    // TEST 4: buildSourceUri FAILS WHEN BUCKET NULL
+    // ---------------------------------------------------------------------
+    @Test
+    void testBuildSourceUri_MissingBucket_ThrowsException() {
+        when(s3Properties.getBucketName()).thenReturn(null);
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> invokeBuildSourceUri("file.txt")
+        );
+
+        assertTrue(ex.getMessage().contains("Missing required S3 properties"));
+    }
+
+    // ---------------------------------------------------------------------
+    // TEST 5: buildDestinationUri SUCCESS
+    // ---------------------------------------------------------------------
+    @Test
+    void testBuildDestinationUri_Success() throws Exception {
+        MetadataModel metadata = MetadataModel.builder()
+                .claimNumber("C1")
+                .certificateNumber("CERT1")
+                .groupNumber("G1")
+                .corrTransactionId("T1")
+                .corrSubTransactionId("ST1")
+                .eventName("EVT")
+                .disbursementId("D1")
+                .documentClass("DOC")
+                .objectStore("OS")
+                .acc("ACC")
+                .title("Title")
+                .build();
+
+        String result = invokeBuildDestinationUri("file.txt", metadata);
+
+        assertTrue(result.startsWith("filenet://file.txt?"));
+        assertTrue(result.contains("claimNumber=C1"));
+        assertTrue(result.contains("groupNumber=G1"));
+    }
+
+    // ---------------------------------------------------------------------
+    // TEST 6: buildDestinationUri FAILS WHEN REQUIRED FIELDS MISSING
+    // ---------------------------------------------------------------------
+    @Test
+    void testBuildDestinationUri_MissingRequiredFields_ThrowsException() {
+        MetadataModel metadata = MetadataModel.builder()
+                .claimNumber("C1")
+                .certificateNumber("CERT1")
+                .groupNumber(null)     // required
+                .corrTransactionId(null) // required
+                .build();
+
+        DataFormatException ex = assertThrows(
+                DataFormatException.class,
+                () -> invokeBuildDestinationUri("file.txt", metadata)
+        );
+
+        assertTrue(ex.getMessage().contains("Missing required field"));
+    }
+
+    // ----------------------------------------------------------
+    // PRIVATE REFLECTION HELPERS TO TEST PRIVATE METHODS
+    // ----------------------------------------------------------
+    private String invokeBuildSourceUri(String file) throws Exception {
+        var method = FileTransferEventService.class.getDeclaredMethod("buildSourceUri", String.class);
+        method.setAccessible(true);
+        return (String) method.invoke(service, file);
+    }
+
+    private String invokeBuildDestinationUri(String f, MetadataModel m) throws Exception {
+        var method = FileTransferEventService.class.getDeclaredMethod("buildDestinationUri",
+                String.class, MetadataModel.class);
+        method.setAccessible(true);
+        return (String) method.invoke(service, f, m);
+    }
+}

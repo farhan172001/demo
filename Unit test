@@ -1025,3 +1025,23 @@ class EExstreamContentServiceTest {
         assertTrue(ex.getMessage().toLowerCase().contains("file upload process failed"));
     }
 }
+
+
+
+
+
+private PutObjectResponse createSuccessfulResponse() {  
+        return (PutObjectResponse) PutObjectResponse.builder()
+                .sdkHttpResponse(SdkHttpResponse.builder()
+                        .statusCode(200)
+                        .build())
+                .build();
+    }  
+
+    private PutObjectResponse createFailedResponse() {  
+        return (PutObjectResponse) PutObjectResponse.builder()
+                .sdkHttpResponse(SdkHttpResponse.builder()
+                        .statusCode(500)
+                        .build())
+                .build();
+    }  

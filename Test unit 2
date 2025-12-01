@@ -846,3 +846,171 @@ class MQQueuePoolTest {
         }
     }
 }
+
+
+
+
+
+
+package com.aflac.eib.extream.content.mq;
+
+import com.aflac.eib.extream.content.exception.ApplicationException;
+import com.ibm.mq.MQException;
+import com.ibm.mq.MQQueue;
+import com.ibm.mq.MQQueueManager;
+import org.junit.jupiter.api.*;
+import org.mockito.*;
+import org.springframework.core.env.Environment;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class MQQueuePoolTest {
+
+    @Mock
+    private Environment env;
+
+    @Mock
+    private MQQueueManager mockManager;
+
+    @Mock
+    private MQQueue mockQueue;
+
+    private MQQueuePool mqQueuePool;
+
+    @BeforeEach
+    void setup() {
+        MockitoAnnotations.openMocks(this);
+
+        when(env.getProperty(anyString(), anyString())).thenReturn("dummy");
+        when(env.getProperty("mqUserName")).thenReturn("user1");
+        when(env.getProperty("mqPassword")).thenReturn("pass1");
+
+        mqQueuePool = Mockito.spy(new MQQueuePool(env));
+    }
+
+    // --------------------------------------------------------
+    // 1. Initialization success
+    // --------------------------------------------------------
+    @Test
+    void initializeMQQueuePool_success() throws Exception {
+
+        doReturn(mockManager).when(mqQueuePool).createMQManager(any());
+
+        mqQueuePool.initializeMQQueuePool();
+
+        verify(env, atLeastOnce()).getProperty(anyString(), anyString());
+    }
+
+    // --------------------------------------------------------
+    // 2. Initialization failure
+    // --------------------------------------------------------
+    @Test
+    void initializeMQQueuePool_mqException() throws Exception {
+
+        doThrow(new MQException("Q", 2033, "failed"))
+                .when(mqQueuePool).createMQManager(any());
+
+        assertThrows(ApplicationException.class,
+                () -> mqQueuePool.initializeMQQueuePool());
+    }
+
+    // --------------------------------------------------------
+    // 3. Create queue success
+    // --------------------------------------------------------
+    @Test
+    void create_success() throws Exception {
+
+        // Skip initialization logic
+        doNothing().when(mqQueuePool).initializeMQQueuePool();
+
+        MQQueuePool.mqQueueManager = mockManager;
+
+        doReturn(true).when(mockManager).isConnected();
+        when(mockManager.accessQueue(anyString(), anyInt())).thenReturn(mockQueue);
+
+        MQQueue q = mqQueuePool.create();
+
+        assertNotNull(q);
+        verify(mockManager).accessQueue(anyString(), anyInt());
+    }
+
+    // --------------------------------------------------------
+    // 4. Create queue failure
+    // --------------------------------------------------------
+    @Test
+    void create_failure() throws Exception {
+
+        doNothing().when(mqQueuePool).initializeMQQueuePool();
+        MQQueuePool.mqQueueManager = mockManager;
+
+        when(mockManager.accessQueue(anyString(), anyInt()))
+                .thenThrow(new MQException("Q", 2033, "open fail"));
+
+        assertThrows(ApplicationException.class, () -> mqQueuePool.create());
+    }
+
+    // --------------------------------------------------------
+    // 5. Expire null queue
+    // --------------------------------------------------------
+    @Test
+    void expire_nullQueue() {
+        assertDoesNotThrow(() -> mqQueuePool.expire(null));
+    }
+
+    // --------------------------------------------------------
+    // 6. Expire open queue
+    // --------------------------------------------------------
+    @Test
+    void expire_openQueue() throws Exception {
+
+        when(mockQueue.isOpen()).thenReturn(true);
+
+        mqQueuePool.expire(mockQueue);
+
+        verify(mockQueue).close();
+    }
+
+    // --------------------------------------------------------
+    // 7. Expire close exception
+    // --------------------------------------------------------
+    @Test
+    void expire_closeFailure() throws Exception {
+
+        when(mockQueue.isOpen()).thenReturn(true);
+        doThrow(new MQException("Q", 2033, "close fail")).when(mockQueue).close();
+
+        assertThrows(ApplicationException.class,
+                () -> mqQueuePool.expire(mockQueue));
+    }
+
+    // --------------------------------------------------------
+    // 8. Validate null
+    // --------------------------------------------------------
+    @Test
+    void validate_null() {
+        assertFalse(mqQueuePool.validate(null));
+    }
+
+    // --------------------------------------------------------
+    // 9. Validate open queue
+    // --------------------------------------------------------
+    @Test
+    void validate_openQueue() throws Exception {
+
+        when(mockQueue.isOpen()).thenReturn(true);
+
+        assertTrue(mqQueuePool.validate(mockQueue));
+    }
+
+    // --------------------------------------------------------
+    // 10. Validate closed queue
+    // --------------------------------------------------------
+    @Test
+    void validate_closedQueue() throws Exception {
+
+        when(mockQueue.isOpen()).thenReturn(false);
+
+        assertFalse(mqQueuePool.validate(mockQueue));
+    }
+}

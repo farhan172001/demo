@@ -692,3 +692,39 @@ class ObjectPoolTest {
         return (Hashtable<String, Long>) unlockedField.get(pool);
     }
 }
+
+
+
+
+
+@Test
+@DisplayName("Checkout handles multiple expired objects before finding valid one")
+void checkout_handlesMultipleExpiredObjects() throws Exception {
+    pool.expirationTime = 1000L;
+
+    // Create objects
+    String obj1 = pool.checkout();
+    pool.checkIn(obj1);
+    String obj2 = pool.checkout();
+    pool.checkIn(obj2);
+    String obj3 = pool.checkout(); // Keep this one locked/fresh
+    
+    // Manually expire obj1 and obj2 using reflection
+    Hashtable<String, Long> unlocked = getUnlockedHashtable();
+    long expiredTime = System.currentTimeMillis() - 2000L;
+    unlocked.put(obj1, expiredTime);
+    unlocked.put(obj2, expiredTime);
+
+    // Check in obj3 as fresh
+    pool.checkIn(obj3);
+
+    int expireCountBefore = pool.getExpireCallCount();
+    
+    // Checkout should expire obj1, obj2 and potentially use obj3 or create new
+    String result = pool.checkout();
+
+    assertNotNull(result);
+    // At least 2 objects (obj1, obj2) should be expired during enumeration
+    assertTrue(pool.getExpireCallCount() >= expireCountBefore + 2,
+        "Should have expired at least 2 objects");
+}

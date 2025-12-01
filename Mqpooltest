@@ -344,3 +344,351 @@ class MQQueuePoolTest {
         assertSame(q1, q2);
     }
 }
+
+
+
+
+
+
+
+
+class ObjectPoolTest {
+
+    private TestObjectPool pool;
+    private String testObject;
+
+    // Concrete implementation for testing
+    private static class TestObjectPool extends ObjectPool<String> {
+        private boolean shouldValidate = true;
+        private boolean shouldThrowOnCreate = false;
+        private boolean shouldThrowOnExpire = false;
+        private int createCallCount = 0;
+        private int validateCallCount = 0;
+        private int expireCallCount = 0;
+
+        @Override
+        protected String create() throws ApplicationException {
+            createCallCount++;
+            if (shouldThrowOnCreate) {
+                throw new ApplicationException("Create failed");
+            }
+            return "Object-" + createCallCount;
+        }
+
+        @Override
+        protected boolean validate(String obj) {
+            validateCallCount++;
+            return shouldValidate;
+        }
+
+        @Override
+        protected void expire(String obj) throws ApplicationException {
+            expireCallCount++;
+            if (shouldThrowOnExpire) {
+                throw new ApplicationException("Expire failed");
+            }
+        }
+
+        public void setShouldValidate(boolean shouldValidate) {
+            this.shouldValidate = shouldValidate;
+        }
+
+        public void setShouldThrowOnCreate(boolean shouldThrow) {
+            this.shouldThrowOnCreate = shouldThrow;
+        }
+
+        public void setShouldThrowOnExpire(boolean shouldThrow) {
+            this.shouldThrowOnExpire = shouldThrow;
+        }
+
+        public int getCreateCallCount() {
+            return createCallCount;
+        }
+
+        public int getValidateCallCount() {
+            return validateCallCount;
+        }
+
+        public int getExpireCallCount() {
+            return expireCallCount;
+        }
+    }
+
+    @BeforeEach
+    void setUp() {
+        pool = new TestObjectPool();
+        testObject = "TestObject";
+    }
+
+    @Test
+    @DisplayName("Constructor initializes with default expiration time")
+    void constructor_initializesDefaultExpirationTime() {
+        assertEquals(60000L, pool.expirationTime);
+    }
+
+    @Test
+    @DisplayName("Constructor initializes empty locked and unlocked hashtables")
+    void constructor_initializesEmptyHashtables() throws Exception {
+        Hashtable<String, Long> locked = getLockedHashtable();
+        Hashtable<String, Long> unlocked = getUnlockedHashtable();
+
+        assertNotNull(locked);
+        assertNotNull(unlocked);
+        assertEquals(0, locked.size());
+        assertEquals(0, unlocked.size());
+    }
+
+    @Test
+    @DisplayName("Checkout creates new object when pool is empty")
+    void checkout_createsNewObject_whenPoolIsEmpty() throws Exception {
+        String obj = pool.checkout();
+
+        assertNotNull(obj);
+        assertEquals("Object-1", obj);
+        assertEquals(1, pool.getCreateCallCount());
+
+        Hashtable<String, Long> locked = getLockedHashtable();
+        assertEquals(1, locked.size());
+        assertTrue(locked.containsKey(obj));
+    }
+
+    @Test
+    @DisplayName("Checkout reuses valid unlocked object")
+    void checkout_reusesValidObject_fromUnlockedPool() throws Exception {
+        // First checkout
+        String obj1 = pool.checkout();
+        pool.checkIn(obj1);
+
+        // Second checkout should reuse
+        String obj2 = pool.checkout();
+
+        assertSame(obj1, obj2);
+        assertEquals(1, pool.getCreateCallCount());
+        assertEquals(1, pool.getValidateCallCount());
+
+        Hashtable<String, Long> locked = getLockedHashtable();
+        Hashtable<String, Long> unlocked = getUnlockedHashtable();
+        assertEquals(1, locked.size());
+        assertEquals(0, unlocked.size());
+    }
+
+    @Test
+    @DisplayName("Checkout expires and recreates invalid object")
+    void checkout_expiresInvalidObject_andCreatesNew() throws Exception {
+        String obj1 = pool.checkout();
+        pool.checkIn(obj1);
+
+        // Make validation fail
+        pool.setShouldValidate(false);
+
+        String obj2 = pool.checkout();
+
+        assertNotSame(obj1, obj2);
+        assertEquals(2, pool.getCreateCallCount());
+        assertEquals(1, pool.getValidateCallCount());
+        assertEquals(1, pool.getExpireCallCount());
+    }
+
+    @Test
+    @DisplayName("Checkout expires objects that exceed expiration time")
+    void checkout_expiresOldObjects() throws Exception {
+        // Set very short expiration time
+        pool.expirationTime = 10L;
+
+        String obj1 = pool.checkout();
+        pool.checkIn(obj1);
+
+        // Wait for expiration
+        Thread.sleep(50);
+
+        String obj2 = pool.checkout();
+
+        assertNotSame(obj1, obj2);
+        assertEquals(2, pool.getCreateCallCount());
+        assertEquals(1, pool.getExpireCallCount());
+        assertEquals(0, pool.getValidateCallCount()); // Expired before validation
+    }
+
+    @Test
+    @DisplayName("Checkout handles multiple expired objects")
+    void checkout_handlesMultipleExpiredObjects() throws Exception {
+        pool.expirationTime = 10L;
+
+        // Create and check in multiple objects
+        String obj1 = pool.checkout();
+        pool.checkIn(obj1);
+        String obj2 = pool.checkout();
+        pool.checkIn(obj2);
+        String obj3 = pool.checkout();
+        pool.checkIn(obj3);
+
+        // Wait for expiration
+        Thread.sleep(50);
+
+        // Checkout should expire all and create new
+        String newObj = pool.checkout();
+
+        assertNotNull(newObj);
+        assertEquals(4, pool.getCreateCallCount());
+        assertEquals(3, pool.getExpireCallCount());
+    }
+
+    @Test
+    @DisplayName("Checkout throws ApplicationException when create fails")
+    void checkout_throwsException_whenCreateFails() {
+        pool.setShouldThrowOnCreate(true);
+
+        assertThrows(ApplicationException.class, () -> pool.checkout());
+    }
+
+    @Test
+    @DisplayName("Checkout propagates ApplicationException from expire")
+    void checkout_propagatesException_whenExpireFails() throws Exception {
+        String obj = pool.checkout();
+        pool.checkIn(obj);
+
+        pool.setShouldValidate(false);
+        pool.setShouldThrowOnExpire(true);
+
+        assertThrows(ApplicationException.class, () -> pool.checkout());
+    }
+
+    @Test
+    @DisplayName("CheckIn moves object from locked to unlocked")
+    void checkIn_movesObjectToUnlocked() throws Exception {
+        String obj = pool.checkout();
+
+        Hashtable<String, Long> locked = getLockedHashtable();
+        Hashtable<String, Long> unlocked = getUnlockedHashtable();
+
+        assertEquals(1, locked.size());
+        assertEquals(0, unlocked.size());
+
+        pool.checkIn(obj);
+
+        assertEquals(0, locked.size());
+        assertEquals(1, unlocked.size());
+        assertTrue(unlocked.containsKey(obj));
+    }
+
+    @Test
+    @DisplayName("CheckIn records current timestamp")
+    void checkIn_recordsCurrentTimestamp() throws Exception {
+        String obj = pool.checkout();
+
+        long beforeCheckIn = System.currentTimeMillis();
+        pool.checkIn(obj);
+        long afterCheckIn = System.currentTimeMillis();
+
+        Hashtable<String, Long> unlocked = getUnlockedHashtable();
+        Long timestamp = unlocked.get(obj);
+
+        assertNotNull(timestamp);
+        assertTrue(timestamp >= beforeCheckIn && timestamp <= afterCheckIn);
+    }
+
+    @Test
+    @DisplayName("Multiple checkout and checkin cycles work correctly")
+    void multipleCheckoutCheckinCycles() throws Exception {
+        // Cycle 1
+        String obj1 = pool.checkout();
+        pool.checkIn(obj1);
+
+        // Cycle 2 - should reuse
+        String obj2 = pool.checkout();
+        assertSame(obj1, obj2);
+        pool.checkIn(obj2);
+
+        // Cycle 3 - should reuse
+        String obj3 = pool.checkout();
+        assertSame(obj1, obj3);
+
+        assertEquals(1, pool.getCreateCallCount());
+        assertEquals(2, pool.getValidateCallCount());
+    }
+
+    @Test
+    @DisplayName("Pool handles concurrent-like sequential operations")
+    void pool_handlesSequentialOperations() throws Exception {
+        String obj1 = pool.checkout();
+        String obj2 = pool.checkout();
+        String obj3 = pool.checkout();
+
+        assertNotSame(obj1, obj2);
+        assertNotSame(obj2, obj3);
+        assertNotSame(obj1, obj3);
+
+        pool.checkIn(obj1);
+        pool.checkIn(obj2);
+        pool.checkIn(obj3);
+
+        Hashtable<String, Long> unlocked = getUnlockedHashtable();
+        assertEquals(3, unlocked.size());
+
+        // Checkout should reuse one of them
+        String reused = pool.checkout();
+        assertTrue(reused.equals(obj1) || reused.equals(obj2) || reused.equals(obj3));
+    }
+
+    @Test
+    @DisplayName("Expiration time can be customized")
+    void expirationTime_canBeCustomized() {
+        pool.expirationTime = 120000L;
+        assertEquals(120000L, pool.expirationTime);
+    }
+
+    @Test
+    @DisplayName("Checkout with mix of expired and valid objects")
+    void checkout_withMixOfExpiredAndValidObjects() throws Exception {
+        pool.expirationTime = 100L;
+
+        // Create first object
+        String obj1 = pool.checkout();
+        pool.checkIn(obj1);
+
+        // Wait a bit
+        Thread.sleep(50);
+
+        // Create second object (should not be expired yet)
+        String obj2 = pool.checkout();
+        pool.checkIn(obj2);
+
+        // Wait for first to expire but not second
+        Thread.sleep(60);
+
+        // Next checkout should expire obj1 but use obj2
+        String reused = pool.checkout();
+
+        assertSame(obj2, reused);
+        assertEquals(2, pool.getCreateCallCount());
+        assertEquals(1, pool.getExpireCallCount());
+        assertEquals(1, pool.getValidateCallCount());
+    }
+
+    @Test
+    @DisplayName("CheckIn on non-locked object still works")
+    void checkIn_onNonLockedObject() throws Exception {
+        String arbitraryObj = "arbitrary";
+
+        // Should not throw exception
+        assertDoesNotThrow(() -> pool.checkIn(arbitraryObj));
+
+        Hashtable<String, Long> unlocked = getUnlockedHashtable();
+        assertTrue(unlocked.containsKey(arbitraryObj));
+    }
+
+    // Helper methods to access private fields using reflection
+    @SuppressWarnings("unchecked")
+    private Hashtable<String, Long> getLockedHashtable() throws Exception {
+        Field lockedField = ObjectPool.class.getDeclaredField("locked");
+        lockedField.setAccessible(true);
+        return (Hashtable<String, Long>) lockedField.get(pool);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Hashtable<String, Long> getUnlockedHashtable() throws Exception {
+        Field unlockedField = ObjectPool.class.getDeclaredField("unlocked");
+        unlockedField.setAccessible(true);
+        return (Hashtable<String, Long>) unlockedField.get(pool);
+    }
+}

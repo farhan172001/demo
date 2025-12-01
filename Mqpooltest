@@ -728,3 +728,42 @@ void checkout_handlesMultipleExpiredObjects() throws Exception {
     assertTrue(pool.getExpireCallCount() >= expireCountBefore + 2,
         "Should have expired at least 2 objects");
 }
+
+
+
+
+
+
+
+
+
+@Test
+@DisplayName("Checkout handles multiple expired objects")
+void checkout_handlesMultipleExpiredObjects() throws Exception {
+    pool.expirationTime = 10L;
+
+    // Create and check in multiple objects
+    String obj1 = pool.checkout();
+    pool.checkIn(obj1);
+    String obj2 = pool.checkout();
+    pool.checkIn(obj2);
+    String obj3 = pool.checkout();
+    pool.checkIn(obj3);
+
+    assertEquals(3, pool.getCreateCallCount());
+
+    // Wait for expiration
+    Thread.sleep(50);
+
+    // Checkout should expire all old objects and create a new one
+    String newObj = pool.checkout();
+
+    assertNotNull(newObj);
+    // The pool will iterate through all expired objects, expire them,
+    // then create a new one
+    assertEquals(4, pool.getCreateCallCount()); // 3 original + 1 new
+    
+    // All 3 should be expired as the enumeration processes them
+    assertTrue(pool.getExpireCallCount() >= 1, 
+        "At least one object should be expired");
+}

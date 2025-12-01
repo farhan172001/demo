@@ -68,3 +68,35 @@ class S3ConfigTest {
                 .contains("DefaultSdkHttpClient");
     }
 }
+
+
+class S3ConfigTest {
+@Test
+void getS3Client_shouldCreateValidS3Client() {
+
+// Arrange
+
+S3Config config = new S3Config();
+
+// Act
+
+S3Client client config.getS3Client();
+
+// Assert
+
+assertNotNull(client, "S3Client should not be null");
+
+// Prefer reading the configured region from the service configuration when
+
+available
+
+assertEquals(Region.US_EAST_1,
+
+client.serviceClientConfiguration().region(),
+
+"Region should be US_EAST_1");
+SdkHttpClient httpClient client.serviceClientConfiguration().httpClient(); assertNotNull(httpClient, "HttpClient should not be null");
+
+// Optionally, if you truly require a specific implementation name:
+
+assertTrue(httpClient.getClass().getSimpleName().contains("DefaultSdkHttpClient"), "HttpClient should be DefaultSdkHttpClient or equivalent");

@@ -659,3 +659,190 @@ class ObjectPoolTest {
         assertNotSame(sb, next); // must create new one
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+import com.aflac.eib.extream.content.exception.ApplicationException;
+import com.ibm.mq.MQEnvironment;
+import com.ibm.mq.MQException;
+import com.ibm.mq.MQQueue;
+import com.ibm.mq.MQQueueManager;
+import org.junit.jupiter.api.*;
+import org.mockito.MockedConstruction;
+import org.mockito.Mockito;
+import org.springframework.core.env.Environment;
+
+import java.lang.reflect.Field;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+class MQQueuePoolTest {
+
+    private Environment env;
+    private MQQueuePool pool;
+
+    @BeforeEach
+    void setup() throws Exception {
+
+        env = mock(Environment.class);
+
+        when(env.getProperty("mqHostName", "upico.aflac.com")).thenReturn("host1");
+        when(env.getProperty("mqPort", "1416")).thenReturn("1417");
+        when(env.getProperty("mqChannelName", "EIB.TO.PC01")).thenReturn("CH.A");
+        when(env.getProperty("mqQueueName", "AG.EOS.TO.EIB.IMAGE.DATA")).thenReturn("Q1");
+        when(env.getProperty("mqManagerName", "PC01")).thenReturn("QM1");
+        when(env.getProperty("mqUserName")).thenReturn("user1");
+        when(env.getProperty("mqPassword")).thenReturn("pass1");
+
+        pool = new MQQueuePool(env);
+
+        // Reset static mqQueueManager
+        Field f = MQQueuePool.class.getDeclaredField("mqQueueManager");
+        f.setAccessible(true);
+        f.set(null, null);
+    }
+
+    @AfterEach
+    void tearDown() throws Exception {
+        Field f = MQQueuePool.class.getDeclaredField("mqQueueManager");
+        f.setAccessible(true);
+        f.set(null, null);
+    }
+
+    @Test
+    void initialize_shouldSetMQEnvironment_andCreateManager_whenNotConnected() throws Exception {
+
+        try (MockedConstruction<MQQueueManager> cons =
+                     Mockito.mockConstruction(MQQueueManager.class, (mock, ctx) -> {
+                         when(mock.isConnected()).thenReturn(true);
+                     })) {
+
+            MQQueueManager managerMock =
+                    cons.constructed().isEmpty() ? null : cons.constructed().get(0);
+
+            MQQueue queueMock = mock(MQQueue.class);
+
+            if (managerMock != null) {
+                when(managerMock.accessQueue(eq("Q1"), anyInt())).thenReturn(queueMock);
+            }
+
+            MQQueue q = pool.create();
+
+            assertNotNull(q, "Queue should be returned from create()");
+            assertEquals("host1", MQEnvironment.hostname);
+            assertEquals(1417, MQEnvironment.port);
+            assertEquals("CH.A", MQEnvironment.channel);
+
+            if (managerMock != null) {
+                verify(managerMock, times(1)).accessQueue(eq("Q1"), anyInt());
+            }
+        }
+    }
+
+    @Test
+    void create_shouldThrowApplicationException_whenMQExceptionOccurs() throws Exception {
+
+        try (MockedConstruction<MQQueueManager> cons =
+                     Mockito.mockConstruction(MQQueueManager.class, (mock, ctx) -> {
+                         when(mock.isConnected()).thenReturn(false);
+                         when(mock.accessQueue(anyString(), anyInt()))
+                                 .thenThrow(new MQException(2, 2009, "ConnFail"));
+                     })) {
+
+            Exception ex = assertThrows(ApplicationException.class, () -> pool.create());
+            assertTrue(
+                    ex.getMessage().contains("Unable to create MQ queue")
+                            || ex.getMessage().contains("Failed"),
+                    "Should wrap MQException in ApplicationException"
+            );
+        }
+    }
+
+    @Test
+    void expire_shouldCloseQueue_whenOpen() throws Exception {
+
+        MQQueue q = mock(MQQueue.class);
+        when(q.isOpen()).thenReturn(true);
+
+        pool.expire(q);
+
+        verify(q, times(1)).close();
+    }
+
+    @Test
+    void expire_shouldDoNothing_whenQueueNull() {
+        assertDoesNotThrow(() -> pool.expire(null));
+    }
+
+    @Test
+    void expire_shouldNotClose_whenNotOpen() throws Exception {
+
+        MQQueue q = mock(MQQueue.class);
+        when(q.isOpen()).thenReturn(false);
+
+        pool.expire(q);
+
+        verify(q, never()).close();
+    }
+
+    @Test
+    void validate_shouldReturnFalse_whenNull() {
+        assertFalse(pool.validate(null));
+    }
+
+    @Test
+    void validate_shouldReturnTrue_whenOpen() throws Exception {
+
+        MQQueue q = mock(MQQueue.class);
+        when(q.isOpen()).thenReturn(true);
+
+        assertTrue(pool.validate(q));
+    }
+
+    @Test
+    void validate_shouldReturnFalse_whenClosedOrException() throws Exception {
+
+        MQQueue qClosed = mock(MQQueue.class);
+        when(qClosed.isOpen()).thenReturn(false);
+
+        MQQueue qThrows = mock(MQQueue.class);
+        when(qThrows.isOpen()).thenThrow(new RuntimeException("err"));
+
+        assertFalse(pool.validate(qClosed));
+        assertFalse(pool.validate(qThrows));
+    }
+
+    @Test
+    void objectPool_integration_checkout_checkIn_flow() throws Exception {
+
+        MQQueue queueMock = mock(MQQueue.class);
+
+        try (MockedConstruction<MQQueueManager> cons =
+                     Mockito.mockConstruction(MQQueueManager.class, (mock, ctx) -> {
+                         when(mock.isConnected()).thenReturn(true);
+                         when(mock.accessQueue(eq("Q1"), anyInt())).thenReturn(queueMock);
+                     })) {
+
+            MQQueue q1 = pool.checkout();
+            assertSame(queueMock, q1);
+
+            pool.checkIn(q1);
+
+            pool.expirationTime = 10_000L;
+
+            MQQueue q2 = pool.checkout();
+            assertSame(q1, q2, "Should reuse unlocked queue if still valid");
+        }
+    }
+}

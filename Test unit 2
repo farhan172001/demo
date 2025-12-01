@@ -1,0 +1,70 @@
+Write complete test case for this: @Configuration 1 usage 1 related problem
+
+public class S3Config {
+
+@Bean no usages
+
+@Primary
+
+public S3Client getS3Client() {
+
+AttributeMap attributeMap = AttributeMap.builder()
+
+.build();
+
+final SdkHttpClient sdkHttpClient = new DefaultSdkHttpClientBuilder().buildWithDefaults(
+
+attributeMap);
+
+return S3Client.builder()
+
+.region (Region.US_EAST_1)
+
+.httpClient(sdkHttpClient)
+
+.build();
+}
+
+package com.aflac.eib.extream.content.configuration;
+
+import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.http.SdkHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class S3ConfigTest {
+
+    @Test
+    void getS3Client_shouldCreateValidS3Client() {
+
+        // Arrange
+        S3Config config = new S3Config();
+
+        // Act
+        S3Client client = config.getS3Client();
+
+        // Assert
+        assertThat(client)
+                .as("S3Client should not be null")
+                .isNotNull()
+                .isInstanceOf(S3Client.class);
+
+        // Validate region
+        assertThat(client.serviceClientConfiguration().region())
+                .as("Region should be US_EAST_1")
+                .isEqualTo(Region.US_EAST_1);
+
+        // Validate http client
+        SdkHttpClient httpClient = client.serviceClientConfiguration().httpClient();
+
+        assertThat(httpClient)
+                .as("HttpClient should not be null")
+                .isNotNull();
+
+        assertThat(httpClient.getClass().getSimpleName())
+                .as("HttpClient should be DefaultSdkHttpClient")
+                .contains("DefaultSdkHttpClient");
+    }
+}

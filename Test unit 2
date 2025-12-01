@@ -99,4 +99,563 @@ SdkHttpClient httpClient client.serviceClientConfiguration().httpClient(); asser
 
 // Optionally, if you truly require a specific implementation name:
 
-assertTrue(httpClient.getClass().getSimpleName().contains("DefaultSdkHttpClient"), "HttpClient should be DefaultSdkHttpClient or equivalent");
+assertTrue(httpClient.getClass().getSimpleName().contains("DefaultSdkHttpClient"), "HttpClient should be DefaultSdkHttpClient or equivale
+nt");
+
+
+
+
+
+
+
+
+
+
+
+Write unit test cases for this codes: code 1: Configuration
+
+@RequiredArgsConstructor
+
+@Scope("singleton")
+
+public class MQQueuePool extends ObjectPool<MQQueue> {
+
+private final Environment env;
+
+private static MQQueueManager mqQueueManager = null; 6 usages
+
+private String mgPort = null; 3 usages
+
+private String mgChannel = null; 3 usages
+
+private String mqUsername = null; 4 usages
+
+private String moPassword = null; 1 usage
+
+private String mqName = null; 8 usages
+
+private String mgManagerName = null; 3 usages
+
+@PostConstruct 1 usage
+
+private void initializeMQQueuePool() throws ApplicationException {
+
+AppLogger.info(this.getClass(), msg: "Initializing MQ Queue Pool...");
+
+try {
+
+if (mqQueueManager == null || ImqQueueManager.isConnected()) {
+
+String mqHost env.getProperty(key: "mqHostName", defaultValue: "upico.aflac.com");
+
+this.mqPort env.getProperty(key: "mqPort", defaultValue: "1416");
+
+this.mqChannel env.getProperty(key: "mqChannelName", defaultValue: "EIB.TO.PC01");
+
+this.mqName env.getProperty(key: "mqQueueName", defaultValue: "AG.EOS.TO.EIB.IMAGE.DATA");this.mqManagerName = env.getProperty(key: "mqManagerName", defaultValue: "PC01");
+
+this.mqUsername env.getProperty("mqUserName");
+
+this.mqPassword env.getProperty("mqPassword");
+
+}
+
+MQEnvironment.hostname = mqHost;
+
+MQEnvironment.port Integer.parseInt(this.mqPort);
+
+MQEnvironment.channel = this.mqChannel;
+
+AppLogger.info(this.getClass(), String.format(
+
+"MQ Config loaded Manager: %s, Host: %s:%s, Channel: %s, Queue: %s, User: %s", mqManagerName, mqHost, mqPort, mqChannel, mqName, mqUsername, mqUsername != null ? mqUsername: "N/A"
+
+));
+
+mqQueueManager new MQQueueManager (mqManagerName);
+}}
+catch (MQException e) {
+
+AppLogger.error(
+
+this.getClass(), msg: "MQException while opening queue" mqName +
+
+e
+
+throw new ApplicationException(
+
+"Failed to open MQ Queue: + mollame,
+
+e
+
+ExceptionType.TECHNICAL);}}Override
+
+public MQQueue create() throws ApplicationException {
+
+try {
+
+if (mqQueueManager == null || !mqQueueManager.isConnected()) {
+
+initializeMQQueuePool();
+
+int openoptions MQC.MQOO INQUIRE + MQC.MQOO FAIL IF QUIESCING + MQC.MQOO INPUT SHARED;
+
+MQQueue queue = mqQueueManager.accessQueue(mqName, openOptions);
+
+AppLogger.info(this.getClass(),
+
+msg: "MQQueuePool.create MQ Queue created successfully: " mqName);
+
+return queue;
+}
+catch (Exception ex) {
+
+AppLogger.error(
+
+this.getClass(),
+
+msg: "MQQueuePool.create Error creating MQ Queue: + mqName, ex
+
+);
+
+throw new ApplicationException(
+
+"Unable to create MQ queue: mqName,
+
+ex, ExceptionType.TECHNICAL);} finally {
+
+AppLogger.info(this.getClass(), msg: "MQQueuePool.create - EXIT");
+
+}
+
+}
+
+@Override 2 usages
+
+public void expire (MQQueue queue) throws ApplicationException {
+
+AppLogger.info(this.getClass(), msg: "MQQueuePool.expire - ENTER");
+
+if (queue == null) {
+
+}
+
+AppLogger.warn(this.getClass(), msg: "MQQueuePool.expire Queue is null, nothing to close");
+
+AppLogger.info(this.getClass(), msg: "MQQueuePool.expire - EXIT");
+
+return;}try {
+
+if (queue.isopen()) {
+
+queue.close();
+
+}
+
+}
+
+catch (Exception ex) {
+
+AppLogger.error(this.getClass(), msg: "MQQueuePool.expire Error closing MQ Queue", ex);
+
+throw new ApplicationException( "Failed to close MQ Queue", ex, ExceptionType.TECHNICAL
+
+);
+
+}
+
+finally {
+
+AppLogger.info(this.getClass(), msg: "MQQueuePool.expire EXIT");
+
+}
+
+}
+
+@Override
+
+public boolean validate(MQQueue queue) {
+
+AppLogger.info(this.getClass(), msg: "MQQueuePool.validate - ENTER");try {
+
+if (queue == null) {
+
+AppLogger.warn(this.getClass(), msg: "MQQueuePool.validate Queue is null");
+
+return false;
+
+}
+
+boolean isopen queue.isopen();
+
+AppLogger.info(
+
+); this.getClass(), msg: "MQQueuePool.validate Queue validation result: + isopen
+
+return isopen;
+
+} catch (Exception ex) {
+
+AppLogger.error(this.getClass(), msg: "MQQueuePool.validate Exception during validation", ex); return false;
+
+} finally {
+
+}
+
+AppLogger.info(this.getClass(), msg: "MQQueuePool.validate EXIT");
+
+}}} , CODE 2: public abstract class ObjectPool<T> { 1 usage 1 inheritor
+
+protected long expirationTime; 2 usages
+
+private Hashtable<T, Long> locked, unlocked: 4 usages.
+
+protected abstract T create() throws ApplicationException; 1 implementation
+
+protected abstract boolean validate(To); 1 implementation
+
+protected abstract void expire(To) throws ApplicationException; 2 usages 1 implementation
+
+public ObjectPool() { no usages
+
+expirationTime = 60008;
+
+Locked = new Hashtable<T, Long>();
+
+unlocked = new Hashtable<T, Long>();
+
+}t = null;
+
+} else {
+
+if (validate(t)) {
+
+unlocked.remove(t);
+
+Locked.put(t, now);
+
+return (t); I
+
+} else {
+
+// object failed validation
+
+unlocked.remove(t);
+
+expire(t);
+
+t = null;
+
+}
+
+}
+
+}
+
+}
+
+public synchronized T checkout() throws ApplicationException { no usages
+
+Long now System.currentTimeMillis();
+
+Tt;
+
+if (unlocked.size() > 0) {
+
+Enumeration<T> e unlocked.keys();
+
+while (e.hasMoreElements()) {
+
+te.nextElement();
+
+if ((now unlocked.get(t)) > expirationTime) {
+
+// object has expired
+
+unlocked.remove(t);
+
+expire(t);/ no objects available, create a new one
+
+t = create();
+
+locked.put(t, now);
+
+return (t); }
+public synchronized void checkIn(Tt) { no usages
+
+Locked.remove(t);
+
+unlocked.put(t, System.currentTimeMillis());
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+package com.aflac.eib.extream.content.mq;
+
+import com.aflac.eib.extream.content.exception.ApplicationException;
+import com.ibm.mq.*;
+import org.junit.jupiter.api.*;
+import org.mockito.*;
+import org.springframework.core.env.Environment;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class MQQueuePoolTest {
+
+    @Mock
+    private Environment env;
+
+    @Mock
+    private MQQueueManager mockManager;
+
+    @Mock
+    private MQQueue mockQueue;
+
+    private MQQueuePool mqQueuePool;
+
+    @BeforeEach
+    void setup() {
+        MockitoAnnotations.openMocks(this);
+
+        when(env.getProperty(anyString(), anyString())).thenReturn("dummy");
+        when(env.getProperty("mqUserName")).thenReturn("user1");
+        when(env.getProperty("mqPassword")).thenReturn("pass1");
+
+        mqQueuePool = Mockito.spy(new MQQueuePool(env));
+    }
+
+    // --------------------------
+    // 1. Initialization Success
+    // --------------------------
+    @Test
+    void initializeMQQueuePool_success() throws Exception {
+
+        doReturn(mockManager).when(mqQueuePool).createMQManager(any());
+
+        mqQueuePool.initializeMQQueuePool();
+
+        assertNotNull(mqQueuePool);
+        verify(env, atLeastOnce()).getProperty(anyString(), anyString());
+    }
+
+    // --------------------------
+    // 2. Initialization Failure
+    // --------------------------
+    @Test
+    void initializeMQQueuePool_mqException() throws Exception {
+
+        doThrow(new MQException("Q", 2033, "failed"))
+                .when(mqQueuePool).createMQManager(any());
+
+        assertThrows(ApplicationException.class,
+                () -> mqQueuePool.initializeMQQueuePool());
+    }
+
+    // --------------------------
+    // 3. Create Queue Successfully
+    // --------------------------
+    @Test
+    void create_success() throws Exception {
+
+        doNothing().when(mqQueuePool).initializeMQQueuePool();
+
+        doReturn(true).when(mockManager).isConnected();
+        MQQueuePool.mqQueueManager = mockManager;
+
+        when(mockManager.accessQueue(anyString(), anyInt())).thenReturn(mockQueue);
+
+        MQQueue result = mqQueuePool.create();
+
+        assertNotNull(result);
+        verify(mockManager).accessQueue(anyString(), anyInt());
+    }
+
+    // --------------------------
+    // 4. Create Queue Failure
+    // --------------------------
+    @Test
+    void create_failure() throws Exception {
+
+        doNothing().when(mqQueuePool).initializeMQQueuePool();
+        MQQueuePool.mqQueueManager = mockManager;
+
+        when(mockManager.accessQueue(anyString(), anyInt()))
+                .thenThrow(new MQException("Q", 2033, "open fail"));
+
+        assertThrows(ApplicationException.class, () -> mqQueuePool.create());
+    }
+
+    // --------------------------
+    // 5. Expire - Null Queue
+    // --------------------------
+    @Test
+    void expire_nullQueue() throws Exception {
+        mqQueuePool.expire(null);
+    }
+
+    // --------------------------
+    // 6. Expire - Open Queue
+    // --------------------------
+    @Test
+    void expire_openQueue() throws Exception {
+
+        when(mockQueue.isOpen()).thenReturn(true);
+
+        mqQueuePool.expire(mockQueue);
+
+        verify(mockQueue).close();
+    }
+
+    // --------------------------
+    // 7. Expire - Exception
+    // --------------------------
+    @Test
+    void expire_closeFailure() throws Exception {
+
+        when(mockQueue.isOpen()).thenReturn(true);
+        doThrow(new MQException("Q", 2033, "close fail")).when(mockQueue).close();
+
+        assertThrows(ApplicationException.class,
+                () -> mqQueuePool.expire(mockQueue));
+    }
+
+    // --------------------------
+    // 8. Validate null
+    // --------------------------
+    @Test
+    void validate_null() {
+        assertFalse(mqQueuePool.validate(null));
+    }
+
+    // --------------------------
+    // 9. Validate open
+    // --------------------------
+    @Test
+    void validate_openQueue() throws Exception {
+
+        when(mockQueue.isOpen()).thenReturn(true);
+        assertTrue(mqQueuePool.validate(mockQueue));
+    }
+
+    // --------------------------
+    // 10. Validate closed
+    // --------------------------
+    @Test
+    void validate_closedQueue() throws Exception {
+
+        when(mockQueue.isOpen()).thenReturn(false);
+        assertFalse(mqQueuePool.validate(mockQueue));
+    }
+}
+
+
+
+
+
+
+
+
+
+
+class TestObjectPool extends ObjectPool<StringBuilder> {
+
+    @Override
+    protected StringBuilder create() {
+        return new StringBuilder();
+    }
+
+    @Override
+    protected boolean validate(StringBuilder obj) {
+        return obj.length() >= 0; // always valid
+    }
+
+    @Override
+    protected void expire(StringBuilder obj) {
+        // do nothing
+    }
+}
+
+
+import org.junit.jupiter.api.*;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class ObjectPoolTest {
+
+    private TestObjectPool pool;
+
+    @BeforeEach
+    void setup() {
+        pool = new TestObjectPool();
+    }
+
+    // --------------------------
+    // 1. Checkout first object
+    // --------------------------
+    @Test
+    void checkout_createsNewObject() throws Exception {
+        StringBuilder sb = pool.checkout();
+        assertNotNull(sb);
+    }
+
+    // --------------------------
+    // 2. CheckIn then Checkout
+    // --------------------------
+    @Test
+    void checkInThenCheckout_reusesObject() throws Exception {
+
+        StringBuilder obj = pool.checkout();
+        pool.checkIn(obj);
+
+        StringBuilder again = pool.checkout();
+        assertSame(obj, again);
+    }
+
+    // --------------------------
+    // 3. Expired object replaced
+    // --------------------------
+    @Test
+    void checkout_replacesExpiredObjects() throws Exception {
+
+        StringBuilder obj = pool.checkout();
+        pool.checkIn(obj);
+
+        // Force expiration
+        Thread.sleep(pool.expirationTime + 10);
+
+        StringBuilder newObj = pool.checkout();
+
+        assertNotSame(obj, newObj);
+    }
+
+    // --------------------------
+    // 4. Validate failure removes object
+    // --------------------------
+    @Test
+    void checkout_invalidObject_isRemoved() throws Exception {
+
+        TestObjectPool invalidPool = new TestObjectPool() {
+            @Override
+            protected boolean validate(StringBuilder obj) {
+                return false; // always invalid
+            }
+        };
+
+        StringBuilder sb = invalidPool.checkout();
+        invalidPool.checkIn(sb);
+
+        StringBuilder next = invalidPool.checkout();
+        assertNotSame(sb, next); // must create new one
+    }
+}

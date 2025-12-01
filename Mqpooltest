@@ -1,0 +1,346 @@
+public interface MQQueueManagerFactory {
+    MQQueueManager create(String managerName) throws MQException;
+}
+
+
+
+@RequiredArgsConstructor
+@Scope("singleton")
+public class MQQueuePool extends ObjectPool<MQQueue> {
+
+    private final Environment env;
+    private final MQQueueManagerFactory factory;
+
+    // Prefer instance variable unless static is required.
+    private static MQQueueManager mqQueueManager;
+
+    private String mqHost;
+    private String mqPort;
+    private String mqChannel;
+    private String mqUsername;
+    private String mqPassword;
+    private String mqName;
+    private String mqManagerName;
+
+    @PostConstruct
+    void initializeMQQueuePool() throws ApplicationException {
+        AppLogger.info(getClass(), "Initializing MQ Queue Pool...");
+
+        try {
+            if (mqQueueManager == null || !mqQueueManager.isConnected()) {
+
+                mqHost         = env.getProperty("mqHostName", "upico.aflac.com");
+                mqPort         = env.getProperty("mqPort", "1416");
+                mqChannel      = env.getProperty("mqChannelName", "EIB.TO.PC01");
+                mqName         = env.getProperty("mqQueueName", "AG.EOS.TO.EIB.IMAGE.DATA");
+                mqManagerName  = env.getProperty("mqManagerName", "PC01");
+                mqUsername     = env.getProperty("mqUserName");
+                mqPassword     = env.getProperty("mqPassword");
+
+                MQEnvironment.hostname = mqHost;
+                MQEnvironment.port     = Integer.parseInt(mqPort);
+                MQEnvironment.channel  = mqChannel;
+
+                AppLogger.info(
+                        getClass(),
+                        String.format(
+                                "MQ Config loaded Manager: %s, Host: %s:%s, Channel: %s, Queue: %s, User: %s",
+                                mqManagerName,
+                                mqHost,
+                                mqPort,
+                                mqChannel,
+                                mqName,
+                                mqUsername != null ? mqUsername : "N/A"
+                        )
+                );
+            }
+
+            mqQueueManager = factory.create(mqManagerName);
+
+        } catch (MQException e) {
+            AppLogger.error(getClass(),
+                    "MQException while opening queue " + mqName, e);
+            throw new ApplicationException(
+                    "Failed to open MQ Queue: " + mqName,
+                    e,
+                    ExceptionType.TECHNICAL
+            );
+
+        } catch (Exception e) {
+            AppLogger.error(getClass(),
+                    "Unexpected error during MQ initialization", e);
+            throw new ApplicationException(
+                    "Unexpected error during MQ initialization",
+                    e,
+                    ExceptionType.TECHNICAL
+            );
+        }
+    }
+
+    @Override
+    public MQQueue create() throws ApplicationException {
+        AppLogger.info(getClass(), "MQQueuePool.create - ENTER");
+
+        try {
+            if (mqQueueManager == null || !mqQueueManager.isConnected()) {
+                initializeMQQueuePool();
+            }
+
+            int openOptions =
+                    MQC.MQOO_INQUIRE |
+                            MQC.MQOO_FAIL_IF_QUIESCING |
+                            MQC.MQOO_INPUT_AS_Q_DEF;
+
+            MQQueue queue = mqQueueManager.accessQueue(mqName, openOptions);
+
+            AppLogger.info(
+                    getClass(),
+                    "MQQueuePool.create MQ Queue created successfully: " + mqName
+            );
+
+            return queue;
+
+        } catch (Exception ex) {
+            AppLogger.error(
+                    getClass(),
+                    "MQQueuePool.create Error creating MQ Queue: " + mqName,
+                    ex
+            );
+            throw new ApplicationException(
+                    "Unable to create MQ queue: " + mqName,
+                    ex,
+                    ExceptionType.TECHNICAL
+            );
+
+        } finally {
+            AppLogger.info(getClass(), "MQQueuePool.create - EXIT");
+        }
+    }
+
+    @Override
+    public void expire(MQQueue queue) throws ApplicationException {
+        AppLogger.info(getClass(), "MQQueuePool.expire - ENTER");
+
+        try {
+            if (queue == null) {
+                AppLogger.warn(getClass(),
+                        "MQQueuePool.expire Queue is null, nothing to close");
+                return;
+            }
+
+            if (queue.isOpen()) {
+                queue.close();
+            }
+
+        } catch (Exception ex) {
+            AppLogger.error(getClass(),
+                    "MQQueuePool.expire Error closing MQ Queue", ex);
+            throw new ApplicationException(
+                    "Failed to close MQ Queue",
+                    ex,
+                    ExceptionType.TECHNICAL
+            );
+
+        } finally {
+            AppLogger.info(getClass(), "MQQueuePool.expire - EXIT");
+        }
+    }
+
+    @Override
+    public boolean validate(MQQueue queue) {
+        AppLogger.info(getClass(), "MQQueuePool.validate - ENTER");
+
+        try {
+            if (queue == null) {
+                AppLogger.warn(getClass(),
+                        "MQQueuePool.validate Queue is null");
+                return false;
+            }
+
+            boolean isOpen = queue.isOpen();
+
+            AppLogger.info(
+                    getClass(),
+                    "MQQueuePool.validate Queue validation result: " + isOpen
+            );
+
+            return isOpen;
+
+        } catch (Exception ex) {
+            AppLogger.error(getClass(),
+                    "MQQueuePool.validate Exception during validation", ex);
+            return false;
+        }
+    }
+}
+
+
+
+
+
+
+
+import com.ibm.mq.MQEnvironment;
+import com.ibm.mq.MQException;
+import com.ibm.mq.MQQueue;
+import com.ibm.mq.MQQueueManager;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.core.env.Environment;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class MQQueuePoolTest {
+
+    private Environment env;
+    private MQQueueManagerFactory factory;
+    private MQQueueManager manager;
+    private MQQueue queue;
+    private MQQueuePool pool;
+
+    @BeforeEach
+    void setup() throws Exception {
+        env = mock(Environment.class);
+        factory = mock(MQQueueManagerFactory.class);
+        manager = mock(MQQueueManager.class);
+        queue = mock(MQQueue.class);
+
+        when(env.getProperty("mqHostName", "upico.aflac.com")).thenReturn("host1");
+        when(env.getProperty("mqPort", "1416")).thenReturn("1417");
+        when(env.getProperty("mqChannelName", "EIB.TO.PC01")).thenReturn("CH.A");
+        when(env.getProperty("mqQueueName", "AG.EOS.TO.EIB.IMAGE.DATA")).thenReturn("Q1");
+        when(env.getProperty("mqManagerName", "PC01")).thenReturn("QM1");
+        when(env.getProperty("mqUserName")).thenReturn("user1");
+        when(env.getProperty("mqPassword")).thenReturn("pass1");
+
+        when(factory.create("QM1")).thenReturn(manager);
+
+        pool = new MQQueuePool(env, factory);
+
+        // Clear static manager before each test
+        MQQueuePool.mqQueueManager = null;
+    }
+
+    @Test
+    void initialize_setsEnvironment_andCreatesManager() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+
+        pool.initializeMQQueuePool();
+
+        assertEquals("host1", MQEnvironment.hostname);
+        assertEquals(1417, MQEnvironment.port);
+        assertEquals("CH.A", MQEnvironment.channel);
+
+        assertNotNull(MQQueuePool.mqQueueManager);
+        verify(factory, times(1)).create("QM1");
+    }
+
+    @Test
+    void initialize_wrapsMQException() throws Exception {
+        when(factory.create(anyString()))
+                .thenThrow(new MQException(2, 2009, "fail"));
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> pool.initializeMQQueuePool()
+        );
+
+        assertTrue(
+                ex.getMessage().contains("Failed to open MQ Queue")
+                        || ex.getMessage().contains("Unexpected")
+        );
+    }
+
+    @Test
+    void create_returnsQueue_whenConnected() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue(eq("Q1"), anyInt())).thenReturn(queue);
+
+        MQQueue q = pool.create();
+        assertSame(queue, q);
+
+        verify(manager, times(1)).accessQueue(eq("Q1"), anyInt());
+    }
+
+    @Test
+    void create_reinitializes_whenNotConnected() throws Exception {
+        when(manager.isConnected())
+                .thenReturn(false)
+                .thenReturn(true);
+
+        when(manager.accessQueue(eq("Q1"), anyInt())).thenReturn(queue);
+
+        MQQueue q = pool.create();
+        assertSame(queue, q);
+
+        verify(factory, atLeastOnce()).create("QM1");
+        verify(manager, times(1)).accessQueue(eq("Q1"), anyInt());
+    }
+
+    @Test
+    void create_wrapsErrors() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue(anyString(), anyInt()))
+                .thenThrow(new RuntimeException("boom"));
+
+        assertThrows(ApplicationException.class, () -> pool.create());
+    }
+
+    @Test
+    void expire_closes_whenOpen() throws Exception {
+        when(queue.isOpen()).thenReturn(true);
+
+        pool.expire(queue);
+
+        verify(queue).close();
+    }
+
+    @Test
+    void expire_noopOnNullOrClosed() throws Exception {
+        assertDoesNotThrow(() -> pool.expire(null));
+
+        when(queue.isOpen()).thenReturn(false);
+
+        pool.expire(queue);
+
+        verify(queue, never()).close();
+    }
+
+    @Test
+    void expire_wrapsCloseErrors() throws Exception {
+        when(queue.isOpen()).thenReturn(true);
+
+        doThrow(new MQException(2, 2009, "close-fail"))
+                .when(queue).close();
+
+        assertThrows(ApplicationException.class, () -> pool.expire(queue));
+    }
+
+    @Test
+    void validate_behavesAsExpected() {
+        assertFalse(pool.validate(null));
+
+        when(queue.isOpen()).thenReturn(true);
+        assertTrue(pool.validate(queue));
+
+        when(queue.isOpen()).thenReturn(false);
+        assertFalse(pool.validate(queue));
+    }
+
+    @Test
+    void objectPool_checkout_checkIn_reuses() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue(eq("Q1"), anyInt())).thenReturn(queue);
+
+        pool.expirationTime = 10_000L;
+
+        MQQueue q1 = pool.checkout();
+        assertSame(queue, q1);
+
+        pool.checkIn(q1);
+
+        MQQueue q2 = pool.checkout();
+        assertSame(q1, q2);
+    }
+}

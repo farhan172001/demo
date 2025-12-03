@@ -16,3 +16,22 @@ public class KafkaConfig {
         return new KafkaTemplate<>(producerFactory());
     }
 }
+@Configuration
+public class AesMskKafkaProducerConfig {
+
+    @Bean
+    public ProducerFactory<String, Message<?>> aesMskProducerFactory() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+
+        return new DefaultKafkaProducerFactory<>(config);
+    }
+
+    // IMPORTANT: name must match @Qualifier in parent class
+    @Bean(name = "aesMskProducerKafkaTemplate")
+    public KafkaTemplate<String, Message<?>> aesMskProducerKafkaTemplate() {
+        return new KafkaTemplate<>(aesMskProducerFactory());
+    }
+}

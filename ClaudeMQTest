@@ -451,3 +451,228 @@ class MQQueuePoolTest {
 3. **Verify ApplicationException**: Make sure this exception class exists in your project
 
 If `MQQueuePool` actually requires a factory parameter in its constructor, please share the constructor signature and I'll adjust the test accordingly.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class MQQueuePoolTest {
+
+    private Environment env;
+    private MQQueueManager manager;
+    private MQQueue queue;
+    private MQQueuePool pool;
+
+    @BeforeEach
+    void setup() throws Exception {
+        env = mock(Environment.class);
+        manager = mock(MQQueueManager.class);
+        queue = mock(MQQueue.class);
+
+        // Setup environment properties
+        when(env.getProperty("mqHostName", "upico.aflac.com")).thenReturn("host1");
+        when(env.getProperty("mqPort", "1416")).thenReturn("1417");
+        when(env.getProperty("mqChannelName", "EIB.TO.PC01")).thenReturn("CH.A");
+        when(env.getProperty("mqQueueName", "AG.EOS.TO.EIB.IMAGE.DATA")).thenReturn("Q1");
+        when(env.getProperty("mqManagerName", "PC01")).thenReturn("QM1");
+        when(env.getProperty("mqUserName")).thenReturn("user1");
+        when(env.getProperty("mqPassword")).thenReturn("pass1");
+
+        pool = new MQQueuePool(env);
+
+        // Clear static manager before each test
+        clearStaticManager();
+    }
+
+    @AfterEach
+    void tearDown() throws Exception {
+        clearStaticManager();
+    }
+
+    private void clearStaticManager() throws Exception {
+        Field field = MQQueuePool.class.getDeclaredField("mqQueueManager");
+        field.setAccessible(true);
+        field.set(null, null);
+    }
+
+    private void setStaticManager(MQQueueManager manager) throws Exception {
+        Field field = MQQueuePool.class.getDeclaredField("mqQueueManager");
+        field.setAccessible(true);
+        field.set(null, manager);
+    }
+
+    @Test
+    void initialize_setsEnvironment() throws Exception {
+        // Mock the MQQueueManager constructor to return our mock
+        try (MockedConstruction<MQQueueManager> mockedConstruction = mockConstruction(
+                MQQueueManager.class,
+                (mock, context) -> {
+                    when(mock.isConnected()).thenReturn(true);
+                })) {
+            
+            pool.initializeMQQueuePool();
+
+            assertEquals("host1", MQEnvironment.hostname);
+            assertEquals(1417, MQEnvironment.port);
+            assertEquals("CH.A", MQEnvironment.channel);
+            assertEquals("user1", MQEnvironment.userID);
+        }
+    }
+
+    @Test
+    void initialize_wrapsMQException() throws Exception {
+        // Mock the MQQueueManager constructor to throw exception
+        try (MockedConstruction<MQQueueManager> mockedConstruction = mockConstruction(
+                MQQueueManager.class,
+                (mock, context) -> {
+                    throw new MQException(2, 2009, "Connection failed");
+                })) {
+
+            ApplicationException ex = assertThrows(
+                    ApplicationException.class,
+                    () -> pool.initializeMQQueuePool()
+            );
+
+            assertTrue(ex.getMessage().contains("Failed to open MQ Queue") 
+                    || ex.getMessage().contains("Unexpected"));
+        }
+    }
+
+    @Test
+    void create_returnsQueue_whenConnected() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue(eq("Q1"), anyInt())).thenReturn(queue);
+        
+        setStaticManager(manager);
+
+        MQQueue q = pool.create();
+        assertSame(queue, q);
+
+        verify(manager, times(1)).accessQueue(eq("Q1"), anyInt());
+    }
+
+    @Test
+    void create_reinitializes_whenNotConnected() throws Exception {
+        when(manager.isConnected()).thenReturn(false);
+        setStaticManager(manager);
+
+        // Mock the reconnection attempt
+        try (MockedConstruction<MQQueueManager> mockedConstruction = mockConstruction(
+                MQQueueManager.class,
+                (mock, context) -> {
+                    when(mock.isConnected()).thenReturn(true);
+                    when(mock.accessQueue(eq("Q1"), anyInt())).thenReturn(queue);
+                })) {
+
+            MQQueue q = pool.create();
+            assertNotNull(q);
+        }
+    }
+
+    @Test
+    void create_wrapsErrors() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue(anyString(), anyInt()))
+                .thenThrow(new MQException(2, 2195, "Queue error"));
+        
+        setStaticManager(manager);
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class, 
+                () -> pool.create()
+        );
+        
+        assertTrue(ex.getMessage().contains("Failed to open MQ Queue") 
+                || ex.getMessage().contains("Unexpected"));
+    }
+
+    @Test
+    void expire_closes_whenOpen() throws Exception {
+        when(queue.isOpen()).thenReturn(true);
+
+        pool.expire(queue);
+
+        verify(queue).close();
+    }
+
+    @Test
+    void expire_noopOnNull() throws Exception {
+        assertDoesNotThrow(() -> pool.expire(null));
+    }
+
+    @Test
+    void expire_noopWhenClosed() throws Exception {
+        when(queue.isOpen()).thenReturn(false);
+
+        pool.expire(queue);
+
+        verify(queue, never()).close();
+    }
+
+    @Test
+    void expire_wrapsCloseErrors() throws Exception {
+        when(queue.isOpen()).thenReturn(true);
+        doThrow(new MQException(2, 2009, "close-fail"))
+                .when(queue).close();
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class, 
+                () -> pool.expire(queue)
+        );
+        
+        assertTrue(ex.getMessage().contains("Failed to close MQ Queue") 
+                || ex.getMessage().contains("Unexpected"));
+    }
+
+    @Test
+    void validate_returnsFalseForNull() {
+        assertFalse(pool.validate(null));
+    }
+
+    @Test
+    void validate_returnsTrueWhenOpen() {
+        when(queue.isOpen()).thenReturn(true);
+        assertTrue(pool.validate(queue));
+    }
+
+    @Test
+    void validate_returnsFalseWhenClosed() {
+        when(queue.isOpen()).thenReturn(false);
+        assertFalse(pool.validate(queue));
+    }
+
+    @Test
+    void objectPool_checkout_checkIn_reuses() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue(eq("Q1"), anyInt())).thenReturn(queue);
+        when(queue.isOpen()).thenReturn(true);
+        
+        setStaticManager(manager);
+
+        // Access the expirationTime field if it's accessible, or remove this line
+        try {
+            Field expField = MQQueuePool.class.getDeclaredField("expirationTime");
+            expField.setAccessible(true);
+            expField.set(pool, 10_000L);
+        } catch (NoSuchFieldException e) {
+            // Field might not exist or might have different name
+        }
+
+        MQQueue q1 = pool.checkout();
+        assertNotNull(q1);
+
+        pool.checkIn(q1);
+
+        MQQueue q2 = pool.checkout();
+        assertSame(q1, q2);
+    }
+}

@@ -1,0 +1,144 @@
+class MQQueuePoolTest {
+
+    private Environment env;
+    private MQQueuePool pool;
+
+    @BeforeEach
+    void setup() throws Exception {
+
+        env = mock(Environment.class);
+
+        when(env.getProperty("mqHostName", "upico.aflac.com")).thenReturn("host1");
+        when(env.getProperty("mqPort", "1416")).thenReturn("1417");
+        when(env.getProperty("mqChannelName", "EIB.TO.PC01")).thenReturn("CH.A");
+        when(env.getProperty("mqQueueName", "AG.EOS.TO.EIB.IMAGE.DATA")).thenReturn("Q1");
+        when(env.getProperty("mqManagerName", "PC01")).thenReturn("QM1");
+        when(env.getProperty("mqUserName")).thenReturn("user1");
+        when(env.getProperty("mqPassword")).thenReturn("pass1");
+
+        pool = new MQQueuePool(env);
+
+        // Reset static manager
+        Field f = MQQueuePool.class.getDeclaredField("mqQueueManager");
+        f.setAccessible(true);
+        f.set(null, null);
+    }
+
+    @AfterEach
+    void tearDown() throws Exception {
+        Field f = MQQueuePool.class.getDeclaredField("mqQueueManager");
+        f.setAccessible(true);
+        f.set(null, null);
+    }
+
+    // -------------------------------------------------------------------------
+
+    @Test
+    void create_shouldInitializeEnvironment_andReturnQueue() throws Exception {
+
+        MQQueue queueMock = mock(MQQueue.class);
+
+        try (MockedConstruction<MQQueueManager> cons =
+                Mockito.mockConstruction(MQQueueManager.class, (mock, ctx) -> {
+
+                    // First call: manager is created → assume not connected
+                    // Second call: after initialize → treat as connected
+                    when(mock.isConnected()).thenReturn(false, true);
+
+                    when(mock.accessQueue(eq("Q1"), anyInt()))
+                            .thenReturn(queueMock);
+                })) {
+
+            MQQueue q = pool.create();
+
+            assertNotNull(q);
+            assertSame(queueMock, q);
+
+            assertEquals("host1", MQEnvironment.hostname);
+            assertEquals(1417, MQEnvironment.port);
+            assertEquals("CH.A", MQEnvironment.channel);
+
+            MQQueueManager mgr = cons.constructed().get(0);
+
+            verify(mgr, times(1))
+                    .accessQueue(eq("Q1"), anyInt());
+        }
+    }
+
+    // -------------------------------------------------------------------------
+
+    @Test
+    void create_shouldThrowApplicationException_whenMQException() throws Exception {
+
+        try (MockedConstruction<MQQueueManager> cons =
+                Mockito.mockConstruction(MQQueueManager.class, (mock, ctx) -> {
+                    when(mock.isConnected()).thenReturn(false, true);
+                    when(mock.accessQueue(anyString(), anyInt()))
+                            .thenThrow(new MQException(2, 2009, "ConnFail"));
+                })) {
+
+            ApplicationException ex =
+                    assertThrows(ApplicationException.class, () -> pool.create());
+
+            assertTrue(ex.getMessage().contains("Unable to create MQ queue"));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+
+    @Test
+    void expire_shouldClose_whenOpen() throws Exception {
+
+        MQQueue q = mock(MQQueue.class);
+        when(q.isOpen()).thenReturn(true);
+
+        pool.expire(q);
+
+        verify(q).close();
+    }
+
+    @Test
+    void expire_shouldDoNothing_whenNull() {
+        assertDoesNotThrow(() -> pool.expire(null));
+    }
+
+    @Test
+    void expire_shouldNotClose_whenNotOpen() throws Exception {
+
+        MQQueue q = mock(MQQueue.class);
+        when(q.isOpen()).thenReturn(false);
+
+        pool.expire(q);
+
+        verify(q, never()).close();
+    }
+
+    // -------------------------------------------------------------------------
+
+    @Test
+    void validate_shouldReturnFalse_whenNull() {
+        assertFalse(pool.validate(null));
+    }
+
+    @Test
+    void validate_shouldReturnTrue_whenOpen() throws Exception {
+
+        MQQueue q = mock(MQQueue.class);
+        when(q.isOpen()).thenReturn(true);
+
+        assertTrue(pool.validate(q));
+    }
+
+    @Test
+    void validate_shouldReturnFalse_whenClosed_orException() throws Exception {
+
+        MQQueue closed = mock(MQQueue.class);
+        when(closed.isOpen()).thenReturn(false);
+
+        MQQueue throwsEx = mock(MQQueue.class);
+        when(throwsEx.isOpen()).thenThrow(new RuntimeException());
+
+        assertFalse(pool.validate(closed));
+        assertFalse(pool.validate(throwsEx));
+    }
+}

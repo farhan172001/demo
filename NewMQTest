@@ -390,3 +390,59 @@ class MQQueuePoolTest {
         assertEquals(ExceptionType.TECHNICAL, ex.getType());
     }
 }
+
+
+org.opentest4y.AssertionFailedError: Unexpected exception type thrown, Expected class. com.aflac.eib.lib.exception.ouston.base.ApplicationException
+
+Actual class org.mockito.exceptions.base.Rockitočxception
+
+<Click to see difference>
+
+> <4 internal Lines
+
+ms
+
+>
+
+at com.aflac.cib.extream.content.configuration.mg.ngqueusPoolTest.initi
+
+14 ms
+
+33 ms
+
+9ms
+
+at java.base/java.util.ArrayList.forEach(ArrayList: en:15313
+
+at java.base/java.util.ArrayList.forEach(ArrayList.love 15117
+
+30 ms
+
+2122 ms
+
+37 m
+
+te 5ms
+
+Caused by: org.nockito.exceptions.base.MockitoException: Could not Initialized
+
+at com.ibm.ng.QQueunManager.<init>(NQQueueñanager.java)
+
+at com.sflac.eib.extream.content.configuration.mq.80QueuePool.initializ at com.aflac.nib.extream.content.configuration.ng.RQQueuePoolTestame
+
+& more
+
+Caused by: com.ibm.mq.MOException Create breakpot: RQJ2003: Completion Cune 2
+
+at com.aflec.eib.extream.content.configuration.mq.QueuePuolastammti
+
+10 more
+org.opentest4j. AssertionFailedError:
+
+Expected:MY.CHANNEL
+
+Actual
+
+:null
+
+<Click to see difference>

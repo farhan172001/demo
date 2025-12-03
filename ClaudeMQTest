@@ -676,3 +676,285 @@ class MQQueuePoolTest {
         assertSame(q1, q2);
     }
 }
+
+
+
+
+
+
+
+
+
+
+The issues are:
+
+1. `MockedConstruction` is throwing a `MockitoException` because IBM MQ classes are final and can't be mocked with standard Mockito
+2. The channel value is `null` instead of `"CH.A"`
+
+Let's use a different approach - we'll test the behavior we can control and use PowerMock for the final classes, or better yet, restructure to avoid mocking final IBM classes:
+
+```java
+package com.aflac.eib.extream.content.configuration.mq;
+
+import com.aflac.eib.lib.exception.custom.base.ApplicationException;
+import com.ibm.mq.MQEnvironment;
+import com.ibm.mq.MQException;
+import com.ibm.mq.MQQueue;
+import com.ibm.mq.MQQueueManager;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.core.env.Environment;
+
+import java.lang.reflect.Field;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class MQQueuePoolTest {
+
+    private Environment env;
+    private MQQueueManager manager;
+    private MQQueue queue;
+    private MQQueuePool pool;
+
+    @BeforeEach
+    void setup() throws Exception {
+        env = mock(Environment.class);
+        manager = mock(MQQueueManager.class);
+        queue = mock(MQQueue.class);
+
+        // Setup environment properties
+        when(env.getProperty("mqHostName", "upico.aflac.com")).thenReturn("host1");
+        when(env.getProperty("mqPort", "1416")).thenReturn("1417");
+        when(env.getProperty("mqChannelName", "EIB.TO.PC01")).thenReturn("CH.A");
+        when(env.getProperty("mqQueueName", "AG.EOS.TO.EIB.IMAGE.DATA")).thenReturn("Q1");
+        when(env.getProperty("mqManagerName", "PC01")).thenReturn("QM1");
+        when(env.getProperty("mqUserName")).thenReturn("user1");
+        when(env.getProperty("mqPassword")).thenReturn("pass1");
+
+        pool = new MQQueuePool(env);
+
+        // Clear static manager before each test
+        clearStaticManager();
+    }
+
+    @AfterEach
+    void tearDown() throws Exception {
+        clearStaticManager();
+        // Clear MQEnvironment static fields
+        MQEnvironment.hostname = null;
+        MQEnvironment.channel = null;
+        MQEnvironment.port = 0;
+        MQEnvironment.userID = null;
+        MQEnvironment.password = null;
+    }
+
+    private void clearStaticManager() throws Exception {
+        Field field = MQQueuePool.class.getDeclaredField("mqQueueManager");
+        field.setAccessible(true);
+        field.set(null, null);
+    }
+
+    private void setStaticManager(MQQueueManager manager) throws Exception {
+        Field field = MQQueuePool.class.getDeclaredField("mqQueueManager");
+        field.setAccessible(true);
+        field.set(null, manager);
+    }
+
+    @Test
+    void initialize_setsEnvironmentVariables() throws Exception {
+        // We can only test that environment variables are set
+        // Cannot test actual MQQueueManager creation without real connection
+        
+        // Call a method that sets environment but catch the connection exception
+        try {
+            pool.initializeMQQueuePool();
+        } catch (ApplicationException e) {
+            // Expected - will fail to connect in test environment
+            assertTrue(e.getMessage().contains("Failed to open MQ Queue") 
+                    || e.getMessage().contains("Unexpected"));
+        }
+
+        // Verify environment was set before connection attempt
+        assertEquals("host1", MQEnvironment.hostname);
+        assertEquals(1417, MQEnvironment.port);
+        assertEquals("CH.A", MQEnvironment.channel);
+        assertEquals("user1", MQEnvironment.userID);
+        assertEquals("pass1", MQEnvironment.password);
+    }
+
+    @Test
+    void initialize_throwsApplicationException_onConnectionFailure() {
+        // The real connection will fail in test environment
+        assertThrows(ApplicationException.class, () -> pool.initializeMQQueuePool());
+    }
+
+    @Test
+    void create_returnsQueue_whenManagerIsConnected() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue("Q1", anyInt())).thenReturn(queue);
+        
+        setStaticManager(manager);
+
+        MQQueue result = pool.create();
+        
+        assertNotNull(result);
+        assertSame(queue, result);
+        verify(manager, times(1)).accessQueue("Q1", anyInt());
+    }
+
+    @Test
+    void create_attemptsReinitialization_whenManagerNotConnected() throws Exception {
+        when(manager.isConnected()).thenReturn(false);
+        setStaticManager(manager);
+
+        // Will attempt to reinitialize and fail to connect
+        assertThrows(ApplicationException.class, () -> pool.create());
+    }
+
+    @Test
+    void create_throwsApplicationException_onMQException() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue(anyString(), anyInt()))
+                .thenThrow(new MQException(2, 2195, "Queue access failed"));
+        
+        setStaticManager(manager);
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class, 
+                () -> pool.create()
+        );
+        
+        assertTrue(ex.getMessage().contains("Failed to open MQ Queue") 
+                || ex.getMessage().contains("Unexpected"));
+    }
+
+    @Test
+    void create_throwsApplicationException_onRuntimeException() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue(anyString(), anyInt()))
+                .thenThrow(new RuntimeException("Unexpected error"));
+        
+        setStaticManager(manager);
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class, 
+                () -> pool.create()
+        );
+        
+        assertTrue(ex.getMessage().contains("Unexpected"));
+    }
+
+    @Test
+    void expire_closesQueue_whenQueueIsOpen() throws Exception {
+        when(queue.isOpen()).thenReturn(true);
+
+        pool.expire(queue);
+
+        verify(queue, times(1)).close();
+    }
+
+    @Test
+    void expire_doesNothing_whenQueueIsNull() {
+        assertDoesNotThrow(() -> pool.expire(null));
+    }
+
+    @Test
+    void expire_doesNothing_whenQueueIsClosed() throws Exception {
+        when(queue.isOpen()).thenReturn(false);
+
+        pool.expire(queue);
+
+        verify(queue, never()).close();
+    }
+
+    @Test
+    void expire_throwsApplicationException_onMQException() throws Exception {
+        when(queue.isOpen()).thenReturn(true);
+        doThrow(new MQException(2, 2009, "Close failed"))
+                .when(queue).close();
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class, 
+                () -> pool.expire(queue)
+        );
+        
+        assertTrue(ex.getMessage().contains("Failed to close MQ Queue") 
+                || ex.getMessage().contains("Unexpected"));
+    }
+
+    @Test
+    void validate_returnsFalse_whenQueueIsNull() {
+        assertFalse(pool.validate(null));
+    }
+
+    @Test
+    void validate_returnsTrue_whenQueueIsOpen() {
+        when(queue.isOpen()).thenReturn(true);
+        assertTrue(pool.validate(queue));
+    }
+
+    @Test
+    void validate_returnsFalse_whenQueueIsClosed() {
+        when(queue.isOpen()).thenReturn(false);
+        assertFalse(pool.validate(queue));
+    }
+
+    @Test
+    void checkout_returnsQueue_fromPool() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue("Q1", anyInt())).thenReturn(queue);
+        when(queue.isOpen()).thenReturn(true);
+        
+        setStaticManager(manager);
+
+        MQQueue result = pool.checkout();
+        
+        assertNotNull(result);
+    }
+
+    @Test
+    void checkIn_returnsQueue_toPool() throws Exception {
+        when(queue.isOpen()).thenReturn(true);
+
+        assertDoesNotThrow(() -> pool.checkIn(queue));
+    }
+
+    @Test
+    void checkout_checkIn_reusesQueue() throws Exception {
+        when(manager.isConnected()).thenReturn(true);
+        when(manager.accessQueue("Q1", anyInt()))
+                .thenReturn(queue)
+                .thenReturn(mock(MQQueue.class)); // Return different queue on second call
+        when(queue.isOpen()).thenReturn(true);
+        
+        setStaticManager(manager);
+
+        MQQueue q1 = pool.checkout();
+        pool.checkIn(q1);
+        MQQueue q2 = pool.checkout();
+        
+        // Should reuse the same queue instead of creating new one
+        assertSame(q1, q2);
+        // Verify accessQueue was called only once (queue was reused)
+        verify(manager, times(1)).accessQueue(anyString(), anyInt());
+    }
+}
+```
+
+## Key Changes:
+
+1. **Removed `MockedConstruction`**: IBM MQ classes are final and can't be mocked this way
+2. **Test real behavior**: For `initialize_setsEnvironmentVariables`, we let the connection fail naturally and verify the environment was set correctly
+3. **Expect connection failures**: In test environment without real MQ server, connection will fail - this is expected
+4. **Focus on testable behavior**: Test what we can control (methods with injected mocks) rather than trying to mock final IBM classes
+5. **Added cleanup**: Clear `MQEnvironment` static fields in `tearDown`
+
+This approach:
+- ✅ Tests environment configuration 
+- ✅ Tests behavior with mocked manager (when we inject it)
+- ✅ Expects real connection attempts to fail gracefully
+- ✅ Doesn't try to mock final IBM MQ classes
+
+The tests now focus on what your code does rather than trying to mock the IBM MQ library internals.

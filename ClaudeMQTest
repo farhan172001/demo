@@ -958,3 +958,28 @@ This approach:
 - ✅ Doesn't try to mock final IBM MQ classes
 
 The tests now focus on what your code does rather than trying to mock the IBM MQ library internals.
+
+
+
+
+
+
+
+
+
+
+
+
+
+@ExtendWith(MockitoExtension.class)
+class MQQueueManagerFactoryImplTest {
+
+    @Test
+    void testCreateReturnsQueueManager() throws Exception {
+        MQQueueManagerFactoryImpl factory = new MQQueueManagerFactoryImpl();
+
+        MQQueueManager manager = factory.create("QM1");
+
+        assertNotNull(manager);    // just check that it returns something
+    }
+}

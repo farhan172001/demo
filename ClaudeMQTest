@@ -983,3 +983,28 @@ class MQQueueManagerFactoryImplTest {
         assertNotNull(manager);    // just check that it returns something
     }
 }
+
+
+
+
+
+
+
+@ExtendWith(MockitoExtension.class)
+class MQQueueManagerFactoryImplTest {
+
+    @Test
+    void testCreateReturnsQueueManager() throws Exception {
+
+        try (MockedConstruction<MQQueueManager> mocked =
+                     Mockito.mockConstruction(MQQueueManager.class)) {
+
+            MQQueueManagerFactoryImpl factory = new MQQueueManagerFactoryImpl();
+
+            MQQueueManager manager = factory.create("QM1");
+
+            assertNotNull(manager);
+            assertEquals(1, mocked.constructed().size()); // constructor was called
+        }
+    }
+}

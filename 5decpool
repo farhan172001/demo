@@ -146,3 +146,42 @@ public class QueueAccessChecker {
     <artifactId>com.ibm.mq.jakarta.client</artifactId>
     <version>9.3.0.0</version>
 </dependency>
+
+
+
+
+<dependencies>
+
+    <!-- Spring JMS support -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-jms</artifactId>
+    </dependency>
+
+    <!-- Spring Boot JMS starter without ActiveMQ client -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-activemq</artifactId>
+        <exclusions>
+            <exclusion>
+                <groupId>org.apache.activemq</groupId>
+                <artifactId>activemq-client</artifactId>
+            </exclusion>
+        </exclusions>
+    </dependency>
+
+    <!-- IBM MQ Jakarta client (for Spring Boot 3.x) -->
+    <dependency>
+        <groupId>com.ibm.mq</groupId>
+        <artifactId>com.ibm.mq.jakarta.client</artifactId>
+        <version>9.3.0.0</version>
+    </dependency>
+
+    <!-- Jakarta JMS API (for Spring Boot 3.x) -->
+    <dependency>
+        <groupId>jakarta.jms</groupId>
+        <artifactId>jakarta.jms-api</artifactId>
+        <version>3.0.0</version>
+    </dependency>
+
+</dependencies>

@@ -1,0 +1,14 @@
+Properties props = new Properties();
+props.put(MQC.TRANSPORT_PROPERTY, MQC.TRANSPORT_MQSERIES_CLIENT);
+props.put(MQC.HOST_NAME_PROPERTY, mqHost);
+props.put(MQC.PORT_PROPERTY, Integer.parseInt(mqPort));
+props.put(MQC.CHANNEL_PROPERTY, mqChannel);
+
+if (mqUsername != null) {
+    props.put(MQC.USER_ID_PROPERTY, mqUsername);
+}
+if (mqPassword != null) {
+    props.put(MQC.PASSWORD_PROPERTY, mqPassword);
+}
+
+mqQueueManager = new MQQueueManager(mqManagerName, props);

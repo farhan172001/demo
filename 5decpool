@@ -185,3 +185,82 @@ public class QueueAccessChecker {
     </dependency>
 
 </dependencies>
+
+
+
+
+
+import com.ibm.mq.jms.MQConnectionFactory;
+import com.ibm.msg.client.wmq.WMQConstants;
+
+import javax.jms.*;
+
+public class MQConnectivityCheck {
+
+    // ***** MQ Connection Details *****
+    private static final String HOSTNAME = "your.mq.host.com";
+    private static final int PORT = 1414;
+    private static final String CHANNEL = "PROD.SVRCONN";
+    private static final String QUEUE_MANAGER = "QM.PROD";
+    private static final String QUEUE_NAME = "APP.INPUT.QUEUE";
+
+    // ***** Credentials *****
+    private static final String USERNAME = "mqUser";
+    private static final String PASSWORD = "mqPassword";
+
+    // Build connection factory
+    public static ConnectionFactory createConnectionFactory() throws JMSException {
+        MQConnectionFactory connectionFactory = new MQConnectionFactory();
+
+        connectionFactory.setHostName(HOSTNAME);
+        connectionFactory.setPort(PORT);
+        connectionFactory.setChannel(CHANNEL);
+        connectionFactory.setQueueManager(QUEUE_MANAGER);
+
+        // Mandatory for remote client connection
+        connectionFactory.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+
+        // Set user ID and password for MQ v9+ CHLAUTH/authentication
+        connectionFactory.setStringProperty(WMQConstants.USERID, USERNAME);
+        connectionFactory.setStringProperty(WMQConstants.PASSWORD, PASSWORD);
+
+        return connectionFactory;
+    }
+
+    // Test connectivity only
+    public static void testMQAccess() {
+        Connection connection = null;
+        Session session = null;
+        MessageProducer producer = null;
+        MessageConsumer consumer = null;
+
+        try {
+            ConnectionFactory cf = createConnectionFactory();
+            System.out.println("Connecting to MQ...");
+
+            // Create connection with credentials
+            connection = cf.createConnection(USERNAME, PASSWORD);
+
+            System.out.println("✔ Connected to Queue Manager: " + QUEUE_MANAGER);
+
+            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+            // Try opening the queue
+            Queue queue = session.createQueue(QUEUE_NAME);
+            MessageProducer mp = session.createProducer(queue);
+
+            System.out.println("✔ Successfully accessed queue: " + QUEUE_NAME);
+
+        } catch (JMSException e) {
+            System.err.println("❌ Failed to access MQ: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            try { if (session != null) session.close(); } catch (Exception ignored) {}
+            try { if (connection != null) connection.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    public static void main(String[] args) {
+        testMQAccess();
+    }
+}

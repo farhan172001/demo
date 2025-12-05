@@ -12,3 +12,19 @@ if (mqPassword != null) {
 }
 
 mqQueueManager = new MQQueueManager(mqManagerName, props);
+
+
+
+
+
+Hashtable<String, Object> properties = new Hashtable<>();
+properties.put(MQConstants.HOST_NAME_PROPERTY, mqHost);
+properties.put(MQConstants.PORT_PROPERTY, Integer.parseInt(mqPort));
+properties.put(MQConstants.CHANNEL_PROPERTY, mqChannel);
+properties.put(MQConstants.USER_ID_PROPERTY, mqUsername);
+properties.put(MQConstants.PASSWORD_PROPERTY, mqPassword);
+
+// Add this - important for client connections
+properties.put(MQConstants.TRANSPORT_PROPERTY, MQConstants.TRANSPORT_MQSERIES_CLIENT);
+
+mqQueueManager = new MQQueueManager(mqManagerName, properties);

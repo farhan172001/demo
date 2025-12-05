@@ -264,3 +264,74 @@ public class MQConnectivityCheck {
         testMQAccess();
     }
 }
+
+
+
+
+
+import com.ibm.mq.jms.MQConnectionFactory;
+import com.ibm.msg.client.wmq.WMQConstants;
+import jakarta.annotation.PostConstruct;
+import org.springframework.stereotype.Component;
+
+import javax.jms.*;
+
+@Component
+public class MQConnectivityChecker {
+
+    // MQ details
+    private static final String HOSTNAME = "your.host.com";
+    private static final int PORT = 1414;
+    private static final String CHANNEL = "PROD.SVRCONN";
+    private static final String QUEUE_MANAGER = "QM.PROD";
+    private static final String QUEUE_NAME = "APP.INPUT.QUEUE";
+
+    private static final String USERNAME = "mqUser";
+    private static final String PASSWORD = "mqPassword";
+
+    // Build connection factory
+    private ConnectionFactory createConnectionFactory() throws JMSException {
+        MQConnectionFactory cf = new MQConnectionFactory();
+
+        cf.setHostName(HOSTNAME);
+        cf.setPort(PORT);
+        cf.setChannel(CHANNEL);
+        cf.setQueueManager(QUEUE_MANAGER);
+        cf.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+
+        // Credentials for CHLAUTH
+        cf.setStringProperty(WMQConstants.USERID, USERNAME);
+        cf.setStringProperty(WMQConstants.PASSWORD, PASSWORD);
+
+        return cf;
+    }
+
+    // Auto-run after Spring context loads
+    @PostConstruct
+    public void verifyMQConnection() {
+        Connection connection = null;
+        Session session = null;
+
+        System.out.println("🔍 Checking MQ connectivity...");
+
+        try {
+            ConnectionFactory cf = createConnectionFactory();
+
+            connection = cf.createConnection(USERNAME, PASSWORD);
+            System.out.println("✔ Successfully connected to Queue Manager: " + QUEUE_MANAGER);
+
+            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+            Queue queue = session.createQueue(QUEUE_NAME);
+            session.createProducer(queue);
+            System.out.println("✔ Successfully accessed Queue: " + QUEUE_NAME);
+
+        } catch (Exception e) {
+            System.err.println("❌ MQ Connectivity Failed: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            try { if (session != null) session.close(); } catch (Exception ignored) {}
+            try { if (connection != null) connection.close(); } catch (Exception ignored) {}
+        }
+    }
+}

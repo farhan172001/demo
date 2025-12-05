@@ -129,3 +129,20 @@ public class QueueAccessChecker {
     <artifactId>com.ibm.mq.allclient</artifactId>
     <version>9.3.0.0</version>
 </dependency>
+
+
+
+
+<!-- Jakarta JMS API -->
+<dependency>
+    <groupId>jakarta.jms</groupId>
+    <artifactId>jakarta.jms-api</artifactId>
+    <version>3.0.0</version>
+</dependency>
+
+<!-- IBM MQ Jakarta client (9.x or 10.x, Jakarta compatible) -->
+<dependency>
+    <groupId>com.ibm.mq</groupId>
+    <artifactId>com.ibm.mq.jakarta.client</artifactId>
+    <version>9.3.0.0</version>
+</dependency>

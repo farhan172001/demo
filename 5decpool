@@ -1,0 +1,114 @@
+import javax.jms.ConnectionFactory;
+
+import com.ibm.mq.jms.MQQueueConnectionFactory;
+import com.ibm.msg.client.wmq.WMQConstants;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jms.core.JmsTemplate;
+
+@Configuration
+public class IbmMqConfig {
+
+    @Value("${mq.host}")
+    private String host;
+
+    @Value("${mq.port}")
+    private int port;
+
+    @Value("${mq.channel}")
+    private String channel;
+
+    @Value("${mq.queueManager}")
+    private String queueManager;
+
+    @Value("${mq.username}")
+    private String username;
+
+    @Value("${mq.password}")
+    private String password;
+
+    @Value("${mq.queueName}")
+    private String queueName;
+
+    @Bean
+    public ConnectionFactory mqConnectionFactory() throws Exception {
+        MQQueueConnectionFactory connectionFactory = new MQQueueConnectionFactory();
+
+        connectionFactory.setHostName(host);
+        connectionFactory.setPort(port);
+        connectionFactory.setQueueManager(queueManager);
+        connectionFactory.setChannel(channel);
+        connectionFactory.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+
+        // Authentication (username/password)
+        connectionFactory.setStringProperty(WMQConstants.USERID, username);
+        connectionFactory.setStringProperty(WMQConstants.PASSWORD, password);
+
+        return connectionFactory;
+    }
+
+    @Bean
+    public JmsTemplate jmsTemplate(ConnectionFactory mqConnectionFactory) {
+        JmsTemplate jmsTemplate = new JmsTemplate(mqConnectionFactory);
+        jmsTemplate.setDefaultDestinationName(queueName);
+        jmsTemplate.setReceiveTimeout(5000);
+        return jmsTemplate;
+    }
+}
+
+
+
+
+
+import javax.annotation.PostConstruct;
+import javax.jms.*;
+
+import org.springframework.jms.core.JmsTemplate;
+import org.springframework.stereotype.Service;
+
+@Service
+public class QueueAccessChecker {
+
+    private final JmsTemplate jmsTemplate;
+
+    public QueueAccessChecker(JmsTemplate jmsTemplate) {
+        this.jmsTemplate = jmsTemplate;
+    }
+
+    @PostConstruct
+    public void checkQueueAccess() {
+        try {
+            System.out.println("🔍 Checking MQ Queue Access...");
+
+            // 1. Try to open the queue (session-level)
+            Connection connection = jmsTemplate.getConnectionFactory().createConnection();
+            connection.start();
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+            Queue queue = session.createQueue(jmsTemplate.getDefaultDestinationName());
+            System.out.println("✔ Queue opened successfully: " + queue.getQueueName());
+
+            // 2. Try to read (non-blocking)
+            Message message = jmsTemplate.receive();
+
+            if (message == null) {
+                System.out.println("✔ Queue accessible but no messages available");
+            } else {
+                System.out.println("✔ Message received from queue: " + message);
+            }
+
+            session.close();
+            connection.close();
+
+            System.out.println("✔ Queue read/open check completed");
+
+        } catch (JMSException e) {
+            System.err.println("❌ MQ JMS Error: " + e.getMessage());
+            e.printStackTrace();
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+}

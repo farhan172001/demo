@@ -1,0 +1,46 @@
+System.out.println("Checking MQ connectivity...");
+
+try {
+    // 1. Create ConnectionFactory (you already have this part)
+    ConnectionFactory cf = createConnectionFactory();
+
+    // 2. Create connection
+    Connection connection = cf.createConnection(USERNAME, PASSWORD);
+    System.out.println("Successfully connected to Queue Manager: " + QUEUE_MANAGER);
+
+    // 3. Create session
+    Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+    // 4. Reference queue
+    Queue queue = session.createQueue("queue:///" + QUEUE_NAME);
+    System.out.println("Successfully accessed Queue: " + QUEUE_NAME);
+
+    // 5. Create consumer (open queue for GET)
+    MessageConsumer consumer = session.createConsumer(queue);
+
+    // 6. Start connection to begin receiving messages
+    connection.start();
+
+    System.out.println("Waiting for message...");
+
+    // 7. Receive message (optional timeout 5000ms)
+    Message msg = consumer.receive(5000);
+
+    if (msg == null) {
+        System.out.println("No message available on queue.");
+    } else if (msg instanceof TextMessage) {
+        String text = ((TextMessage) msg).getText();
+        System.out.println("Received Message: " + text);
+    } else {
+        System.out.println("Received Non-Text Message: " + msg);
+    }
+
+    // 8. Clean up
+    consumer.close();
+    session.close();
+    connection.close();
+
+} catch (Exception e) {
+    e.printStackTrace();
+    System.out.println("MQ Consumption Failed: " + e.getMessage());
+}

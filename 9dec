@@ -74,3 +74,48 @@ public void receiveMessage(Message message) {
         e.printStackTrace();
     }
 }
+
+
+
+
+
+
+
+@RestController
+@RequestMapping("/mq")
+public class MQController {
+
+    private final MQMessageConverter converter;
+
+    public MQController(MQMessageConverter converter) {
+        this.converter = converter;
+    }
+
+    @PostMapping("/convert")
+    public ResponseEntity<String> convertFile(@RequestParam("file") MultipartFile file) {
+        try {
+            byte[] fileBytes = file.getBytes();  // Read raw bytes from file
+            String result = converter.convertBytesToText(fileBytes);
+
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body("Error processing file: " + e.getMessage());
+        }
+    }
+}
+
+
+
+@Component
+public class MQMessageConverter {
+
+    public String convertBytesToText(byte[] messageBytes) {
+        try {
+            return new String(messageBytes, "UTF-8");
+        } catch (Exception e) {
+            throw new RuntimeException("Error converting MQ bytes to text", e);
+        }
+    }
+}

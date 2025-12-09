@@ -28,3 +28,49 @@ public class MQMessageReceiver {
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+@Component
+public class MQMessageReceiver {
+
+    @JmsListener(destination = "${app.ibm.mq.queue}")
+    public void receiveMessage(byte[] message) {
+        try {
+            String converted = new String(message, "UTF-8");
+            System.out.println("Received MQ message: " + converted);
+        } catch (Exception e) {
+            System.err.println("Error processing MQ message: " + e.getMessage());
+        }
+    }
+}
+
+
+
+
+
+
+
+@JmsListener(destination = "${app.ibm.mq.queue}")
+public void receiveMessage(Message message) {
+    try {
+        if (message instanceof BytesMessage bytesMessage) {
+            byte[] data = new byte[(int) bytesMessage.getBodyLength()];
+            bytesMessage.readBytes(data);
+
+            String converted = new String(data, "UTF-8");
+            System.out.println("MQ Message: " + converted);
+        } else {
+            System.out.println("Unexpected message type: " + message.getClass());
+        }
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}

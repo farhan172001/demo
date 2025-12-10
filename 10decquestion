@@ -1,0 +1,168 @@
+But I am receiving in this form right?JMSMessage class: jms_text
+
+JMSType:
+
+null
+
+JMSDelivery Mode: 2
+
+JMSDelivery Delay: 0
+
+JMSDelivery Time: 0
+
+JMSExpiration: 0
+
+JMSPriority:
+
+0
+
+FK
+
+JMSMessageID: ID:c3e2d840d7d8d4f24040404040404040e1e9b09096df8c14
+
+JMSTimestamp:
+
+1765312094320
+
+JMSCorrelationID: null
+
+JMSDestination: null
+
+JMSReply To: null
+
+JMSRedelivered:
+
+false
+
+JMSXAppID: PCEGD710
+
+JMSXDeliveryCount: 1
+
+JMSXUserID: PRODSTC
+
+JMS_IBM_Character_Set: IBM500
+
+JMS_IBM_Encoding: 785
+
+JMS_IBM_Format: MQSTRJMS_IBM_MsgType: 8
+
+JMS_IBM_PutApplType: 2
+
+JMS_IBM_PutDate: 20251209
+
+JMS_IBM_PutTime: 20281432
+
+
+
+
+
+
+
+
+
+
+
+I have received message from this code ,current I have to decode message, I have saved the data in .txt file, make controller that take that file and decide the code,JMSMessage class: jms_text
+
+JMSType:
+
+null
+
+JMSDelivery Mode: 2
+
+JMSDeliveryDelay: 0
+
+JMSDelivery Time: 0
+
+JMSExpiration: 0
+
+JMSPriority: 0
+
+JMSMessageID:
+
+ID:c3e2d840d7d8d4f24040404040404040e1e9b09096df8c14
+
+JMSTimestamp:
+
+1765312094320
+
+JMSCorrelationID: null
+
+JMSDestination: null
+
+JMSReply To:
+
+null
+
+JMSRedelivered: false
+
+JMSXAPPID: PCEGD710
+
+JMSXDeliveryCount: 1
+
+JMSXUserID: PRODSTC
+
+JMS_IBM_Character_Set: IBM500
+
+JMS_IBM_Encoding: 785
+
+JMS_IBM_Format: MQSTRJMS_IBM_MsgType: 8
+
+JMS_IBM_PutApplType: 2
+
+JMS_IBM_PutDate: 20251209
+
+JMS_IBM_PutTime: 20281432, code: @JmsListener(destination = "${app.ibm.mq.queue}") no usages
+
+& Vennapusa Siva Mohan Red
+
+Cond
+
+public void receiveMessage (String message) {
+
+try {
+
+System.out.println("Received MQ message: + message);
+
+} catch (Exception e) {
+
+System.err.println("Error processing MQ message: "+e.getMessage());
+
+}
+
+}, .txt file that we have to decode: 28[($188&?&à)(ZA, Biman;_, +!?Ā BÁN; EA) &%A8.Ná, Ízéi2202122232 88,800ÈÇ ÇRĀMÈD(MÉDIBOÇ$/Maan!
+
+C) &>ÍN-1
+
+i-A; MÁXá- (+377 (1122ÁZIDENZEÇARINĀ Z è<IPÄDÂM/;;,ë+u/É0%; và ác Âm àcă^ [08522; éÃÊ$DÉDIÉ/Åßá ÃMÈa-[_1aeese Ba+ ae; Be (2/28/EemièÏÁ Bo$en(/,ĀDën Āz.zi, 2%áß+2+2)2278.ēnÉï&im--ñÀIÍ] cáéñANA+HA [THÀ>^&*Bailã áÃÁ) BÊñc, [A&A <É-$>8>APCAJ
+
+<ň? [B&MÁ<$E?ÄÄè<NB)+A-, N22 2222222+, CÁCïmà ãÑ+MÂM DÍi.< äèéë$/,ä<Ààlà Bois![)Ä&DE
+
+New^^ <(i]chaiBeña. 202, èi7+82) àà, Âà É¦-Å&2-1880ē?)(Dèsäiliñan>Bàãë;C(>2+
+
+i-a]weèë ÁÄME)?&/2Eià A, 2%ài>ca$ma!-.
+
+aaximiéni-1-22 281/20 N.écÀÈÊÈ(Ā? 28.B ä). Çén] [A?, BAR&
+
+<PAC %EA!@$BA?-ç+ *$, IÄÄN_2Mã<áii>BèâÃá>B]ÅÍçMÄ) ÊÄ(220DÀàèzáz, A22<é Éia?.in Nawiail&ém>$ÍÉämé (BĀRĀDZIMÉAĀCHĀBĀ (AAA)
+
+aAmāměné [&BE/BOÃN$C, MÁZMè3.222228ÇÅ>2123È
+
+Nic+a^) [1, $memà,&àm-/(mèãë?870/iÍ$é+Âm, ^é[Bä$¦ ÁÁÁ/-2, >á(! Càn< % <1,288, DA,B)ẞc&$2éà<i222Bà (22)282-122?1%E>$ÄÈB [HÁMIÁçãā1)^?ññ-22- IAEAÃÉDEIS
+
+
+AIMA)22-12>$CHĀM (ÈË (Á.ÄÄBÀPHÊ Bea
+
+NegiÈM, AMEM>āÁ; ?08 DIÊM[?]
+
+Í
+
+má+ @]mērasinii Amin-28*DÍ.ÉZZĀMĀM&ÉÏBÁ &¦ÈÊÀ/a>+
+
+tem() ( BĀZĀZING-DÉÀÊN22]>a^i2]-22pizinéäze>PICĀĀRäMÃà, à; AMÇÁ&^-ä[?+%Eèidéäá
+
+ក
+
+) [)[BEBIC)] BÃ MÍñÇ, AgèÉ! *8¢È)Ã.ẞ1]28)ii++]ÁéäÉME_Ñøã) [N<&A>22_BDĀin; ÉS MÉ) Cimaams-Acoán
+
+(ÁrÃae/-A&Aéèdièno! 2%<ÍN; BÁ&Nñààñdëse[A]% praeda

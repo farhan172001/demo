@@ -76,3 +76,48 @@ public class MQController {
         }
     }
 }
+
+
+@Component
+public class MQMessageConverter {
+
+    public String convert(byte[] input) {
+
+        try {
+            // 1) Check if binary is zlib compressed (0x78 = all zlib variants)
+            if (input.length > 2 && (input[0] & 0xFF) == 0x78) {
+                byte[] decompressed = decompress(input);
+
+                // 2) Check if decompressed is PDF
+                if (new String(decompressed, 0, 4).equals("%PDF")) {
+                    return "PDF FILE DETECTED (binary) – cannot display text.";
+                }
+
+                // 3) Try decode as UTF-8
+                return new String(decompressed, StandardCharsets.UTF_8);
+            }
+
+            // If not compressed, return hex so user can see binary content
+            return bytesToHex(input);
+
+        } catch (Exception e) {
+            return "Error decoding binary MQ message: " + e.getMessage();
+        }
+    }
+
+    private byte[] decompress(byte[] input) throws IOException {
+        InflaterInputStream inflater = new InflaterInputStream(new ByteArrayInputStream(input));
+        return inflater.readAllBytes();
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format("%02X ", b));
+        return sb.toString();
+    }
+}
+
+
+
+
+

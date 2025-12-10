@@ -273,3 +273,57 @@ public void receiveMessage(Message message) {
         e.printStackTrace();
     }
 }
+
+
+
+
+
+
+
+@JmsListener(destination = "${app.ibm.mq.queue}")
+public void receiveMessage(Message message) {
+    try {
+        byte[] bytes;
+
+        if (message instanceof BytesMessage) {
+            // Best scenario: raw bytes directly from MQ
+            BytesMessage bm = (BytesMessage) message;
+            bytes = new byte[(int) bm.getBodyLength()];
+            bm.readBytes(bytes);
+        }
+        else if (message instanceof TextMessage) {
+            TextMessage tm = (TextMessage) message;
+
+            // Extract String provided by MQ
+            String text = tm.getText();
+
+            // Determine MQ CCSID
+            int ccsid = message.getIntProperty("JMS_IBM_Character_Set");
+
+            if (ccsid == 500 || ccsid == 37 || ccsid == 273) {
+                // Sender used EBCDIC but MQ auto-converted → DO NOT RE-CONVERT
+                // Just use the String provided by JMS/MQ
+                System.out.println("Decoded MQ message: " + text);
+                return;
+            }
+
+            // Otherwise treat as normal Unicode text
+            System.out.println("Decoded MQ message: " + text);
+            return;
+        }
+        else {
+            throw new RuntimeException("Unsupported JMS message type: " + message.getClass());
+        }
+
+        // If we reach here → we are handling raw bytes (BytesMessage)
+        // Decode using appropriate encoding (IBM500)
+        String decoded = new String(bytes, "Cp500");
+        System.out.println("Decoded MQ message: " + decoded);
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}
+
+
+

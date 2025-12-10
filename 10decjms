@@ -223,3 +223,28 @@ public class MQMessageReceiver {
         }
     }
 }
+
+
+
+
+@JmsListener(destination = "${app.ibm.mq.queue}")
+public void receiveMessage(Message message) {
+    try {
+        if (message instanceof BytesMessage bytesMessage) {
+            
+            long length = bytesMessage.getBodyLength();
+            byte[] data = new byte[(int) length];
+            bytesMessage.readBytes(data);
+
+            System.out.println("Received " + data.length + " bytes");
+
+            // pass to your PDF logic
+            savePdf(data);
+        } else {
+            System.err.println("Unexpected message type: " + message.getClass());
+        }
+
+    } catch (Exception e) {
+        System.err.println("Error processing MQ message: " + e.getMessage());
+    }
+}

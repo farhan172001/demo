@@ -1,4 +1,4 @@
-import com.ibm.msg.client.jakarta.wmq.WMQConstants;
+noimport com.ibm.msg.client.jakarta.wmq.WMQConstants;
 import com.ibm.msg.client.jakarta.jms.JmsConnectionFactory;
 import com.ibm.msg.client.jakarta.jms.JmsFactoryFactory;
 import jakarta.jms.ConnectionFactory;
@@ -458,3 +458,384 @@ app.file.output.metadata.path=${OUTPUT_METADATA_PATH:/output/metadata}
 app.metadata.splitter=@
 
 app.file.type=PDF
+
+
+
+
+
+// ============================================================================
+// FileConversionController.java
+// ============================================================================
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/convert")
+public class FileConversionController {
+    
+    @Autowired
+    private FileConversionService conversionService;
+    
+    /**
+     * Test endpoint to convert uploaded .txt file
+     * POST http://localhost:8080/api/convert/test
+     */
+    @PostMapping("/test")
+    public ResponseEntity<Map<String, Object>> testConversion(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "skipHeader", defaultValue = "true") boolean skipHeader,
+            @RequestParam(value = "headerSize", defaultValue = "32") int headerSize,
+            @RequestParam(value = "metadataSplitter", defaultValue = "@") String metadataSplitter) {
+        
+        try {
+            Map<String, Object> result = conversionService.convertFile(
+                file, skipHeader, headerSize, metadataSplitter);
+            
+            return ResponseEntity.ok(result);
+            
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "error", e.getMessage(),
+                    "success", false
+                ));
+        }
+    }
+    
+    /**
+     * Download the converted PDF file
+     * GET http://localhost:8080/api/convert/download/pdf
+     */
+    @GetMapping("/download/pdf")
+    public ResponseEntity<byte[]> downloadPdf() {
+        try {
+            byte[] pdfBytes = conversionService.getLastConvertedPdf();
+            
+            if (pdfBytes == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDispositionFormData("attachment", "converted.pdf");
+            
+            return ResponseEntity.ok()
+                .headers(headers)
+                .body(pdfBytes);
+                
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * Download the converted metadata file
+     * GET http://localhost:8080/api/convert/download/metadata
+     */
+    @GetMapping("/download/metadata")
+    public ResponseEntity<String> downloadMetadata() {
+        try {
+            String metadata = conversionService.getLastConvertedMetadata();
+            
+            if (metadata == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.TEXT_PLAIN);
+            headers.setContentDispositionFormData("attachment", "metadata.txt");
+            
+            return ResponseEntity.ok()
+                .headers(headers)
+                .body(metadata);
+                
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+}
+
+// ============================================================================
+// FileConversionService.java
+// ============================================================================
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class FileConversionService {
+    
+    private static final Logger log = LoggerFactory.getLogger(FileConversionService.class);
+    private static final Charset IBM500_CHARSET = Charset.forName("IBM500");
+    
+    // Store last converted files for download
+    private byte[] lastPdfBytes;
+    private String lastMetadata;
+    
+    /**
+     * Convert the uploaded .txt file (which contains garbled EBCDIC text)
+     * back to proper PDF and metadata
+     */
+    public Map<String, Object> convertFile(
+            MultipartFile file,
+            boolean skipHeader,
+            int headerSize,
+            String metadataSplitter) throws IOException {
+        
+        log.info("Starting file conversion for: {}", file.getOriginalFilename());
+        
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // Step 1: Read the uploaded file as bytes
+            byte[] fileBytes = file.getBytes();
+            log.info("Original file size: {} bytes", fileBytes.length);
+            
+            // Step 2: Convert to String using UTF-8 (this is how it was saved)
+            String contentAsUtf8 = new String(fileBytes, StandardCharsets.UTF_8);
+            log.info("Content as UTF-8 string length: {} chars", contentAsUtf8.length());
+            log.info("First 100 chars (UTF-8): {}", 
+                contentAsUtf8.length() > 100 ? contentAsUtf8.substring(0, 100) : contentAsUtf8);
+            
+            // Step 3: Convert the UTF-8 string back to bytes using IBM500
+            // This reverses the incorrect encoding that happened when saving as String
+            byte[] contentBytes = contentAsUtf8.getBytes(IBM500_CHARSET);
+            log.info("Content as IBM500 bytes length: {} bytes", contentBytes.length);
+            
+            // Step 4: Skip header if needed (first 32 bytes in original message)
+            byte[] payload;
+            if (skipHeader && contentBytes.length > headerSize) {
+                payload = Arrays.copyOfRange(contentBytes, headerSize, contentBytes.length);
+                log.info("Payload after removing {} byte header: {} bytes", headerSize, payload.length);
+            } else {
+                payload = contentBytes;
+                log.info("No header removed, using full content");
+            }
+            
+            // Step 5: Check PDF header
+            String pdfHeaderCheck = checkPdfHeader(payload);
+            log.info("PDF header check: {}", pdfHeaderCheck);
+            result.put("pdfHeaderCheck", pdfHeaderCheck);
+            
+            // Step 6: Try to extract metadata
+            String payloadAsEbcdicString = new String(payload, IBM500_CHARSET);
+            String[] metadataArray = payloadAsEbcdicString.split(metadataSplitter);
+            
+            StringBuilder metadata = new StringBuilder();
+            if (metadataArray != null && metadataArray.length > 1) {
+                log.info("Found {} metadata segments", metadataArray.length);
+                for (int i = 1; i < metadataArray.length; i++) {
+                    metadata.append(metadataArray[i]);
+                    if (i < metadataArray.length - 1) {
+                        metadata.append(System.lineSeparator());
+                    }
+                }
+            } else {
+                log.warn("No metadata found using splitter: '{}'", metadataSplitter);
+            }
+            
+            String metadataContent = metadata.toString().trim();
+            log.info("Extracted metadata length: {} chars", metadataContent.length());
+            
+            // Store for download
+            lastPdfBytes = payload;
+            lastMetadata = metadataContent;
+            
+            // Build result
+            result.put("success", true);
+            result.put("originalFileSize", fileBytes.length);
+            result.put("payloadSize", payload.length);
+            result.put("metadataLength", metadataContent.length);
+            result.put("metadataPreview", metadataContent.length() > 200 
+                ? metadataContent.substring(0, 200) + "..." 
+                : metadataContent);
+            result.put("pdfDownloadUrl", "/api/convert/download/pdf");
+            result.put("metadataDownloadUrl", "/api/convert/download/metadata");
+            
+            // Hex dump of first 50 bytes for debugging
+            result.put("first50BytesHex", bytesToHex(payload, 50));
+            
+            return result;
+            
+        } catch (Exception e) {
+            log.error("Error during conversion: {}", e.getMessage(), e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Check if the payload starts with PDF header
+     */
+    private String checkPdfHeader(byte[] payload) {
+        if (payload.length < 4) {
+            return "Payload too short (< 4 bytes)";
+        }
+        
+        // PDF signature: %PDF (0x25 0x50 0x44 0x46)
+        if (payload[0] == 0x25 && payload[1] == 0x50 && 
+            payload[2] == 0x44 && payload[3] == 0x46) {
+            return "✓ Valid PDF header found (%PDF)";
+        } else {
+            return String.format("⚠ PDF header NOT found. First 4 bytes: 0x%02X 0x%02X 0x%02X 0x%02X",
+                payload[0], payload[1], payload[2], payload[3]);
+        }
+    }
+    
+    /**
+     * Convert bytes to hex string for debugging
+     */
+    private String bytesToHex(byte[] bytes, int limit) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Math.min(bytes.length, limit); i++) {
+            sb.append(String.format("%02X ", bytes[i]));
+            if ((i + 1) % 16 == 0) {
+                sb.append("\n");
+            }
+        }
+        return sb.toString();
+    }
+    
+    public byte[] getLastConvertedPdf() {
+        return lastPdfBytes;
+    }
+    
+    public String getLastConvertedMetadata() {
+        return lastMetadata;
+    }
+}
+
+// ============================================================================
+// HTML Test Page (save as src/main/resources/static/test-converter.html)
+// ============================================================================
+/*
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EBCDIC File Converter Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .upload-section { border: 2px dashed #ccc; padding: 30px; text-align: center; margin: 20px 0; }
+        .result-section { margin: 20px 0; padding: 20px; background: #f5f5f5; border-radius: 5px; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #fff; padding: 10px; overflow-x: auto; border: 1px solid #ddd; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 EBCDIC to PDF Converter Test</h1>
+        
+        <div class="upload-section">
+            <h2>Upload your saved .txt file</h2>
+            <input type="file" id="fileInput" accept=".txt">
+            <br><br>
+            
+            <label>
+                <input type="checkbox" id="skipHeader" checked> Skip first 32 bytes (header)
+            </label>
+            <br>
+            
+            <label>
+                Metadata Splitter: <input type="text" id="splitter" value="@" size="5">
+            </label>
+            <br><br>
+            
+            <button onclick="convertFile()">Convert File</button>
+        </div>
+        
+        <div id="results" class="result-section" style="display:none;">
+            <h2>Conversion Results</h2>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+    
+    <script>
+        async function convertFile() {
+            const fileInput = document.getElementById('fileInput');
+            const skipHeader = document.getElementById('skipHeader').checked;
+            const splitter = document.getElementById('splitter').value;
+            
+            if (!fileInput.files.length) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('skipHeader', skipHeader);
+            formData.append('metadataSplitter', splitter);
+            
+            try {
+                const response = await fetch('/api/convert/test', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                displayResults(result);
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        function displayResults(result) {
+            const resultsDiv = document.getElementById('results');
+            const contentDiv = document.getElementById('resultContent');
+            
+            let html = '';
+            
+            if (result.success) {
+                html += '<p class="success">✓ Conversion successful!</p>';
+                html += '<p><strong>Original file size:</strong> ' + result.originalFileSize + ' bytes</p>';
+                html += '<p><strong>Payload size:</strong> ' + result.payloadSize + ' bytes</p>';
+                html += '<p><strong>PDF Header Check:</strong> ' + result.pdfHeaderCheck + '</p>';
+                html += '<p><strong>Metadata length:</strong> ' + result.metadataLength + ' characters</p>';
+                
+                if (result.metadataPreview) {
+                    html += '<h3>Metadata Preview:</h3>';
+                    html += '<pre>' + result.metadataPreview + '</pre>';
+                }
+                
+                html += '<h3>First 50 Bytes (Hex):</h3>';
+                html += '<pre>' + result.first50BytesHex + '</pre>';
+                
+                html += '<br>';
+                html += '<button onclick="downloadFile(\'/api/convert/download/pdf\', \'converted.pdf\')">Download PDF</button>';
+                html += '<button onclick="downloadFile(\'/api/convert/download/metadata\', \'metadata.txt\')">Download Metadata</button>';
+            } else {
+                html += '<p class="error">✗ Conversion failed: ' + result.error + '</p>';
+            }
+            
+            contentDiv.innerHTML = html;
+            resultsDiv.style.display = 'block';
+        }
+        
+        function downloadFile(url, filename) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</body>
+</html>
+*/

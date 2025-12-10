@@ -1,0 +1,78 @@
+@Component
+public class MQMessageConverter {
+
+    // Most common MQ encodings (EBCDIC first)
+    private static final String[] CHARSETS = {
+            "Cp500",    // CCSID 500 (mainframe default)
+            "Cp037",    // CCSID 37 (US EBCDIC)
+            "Cp1047",   // EBCDIC Latin-1
+            "ISO-8859-1",
+            "Cp1252",
+            "UTF-8"
+    };
+
+    public String decodeMessage(byte[] messageBytes) {
+        String best = null;
+        int bestScore = -1;
+
+        for (String charset : CHARSETS) {
+            try {
+                if (!Charset.isSupported(charset)) continue;
+
+                String decoded = new String(messageBytes, charset);
+                int score = scoreReadable(decoded);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = decoded;
+                }
+
+            } catch (Exception ignored) {}
+        }
+
+        // fallback (should not happen)
+        return best != null ? best : new String(messageBytes);
+    }
+
+    // simple heuristic to choose best readable text
+    private int scoreReadable(String text) {
+        int score = 0;
+        for (char c : text.toCharArray()) {
+            if (Character.isLetterOrDigit(c) ||
+                Character.isWhitespace(c) ||
+                (c >= 32 && c <= 126)) {
+                score++;
+            }
+        }
+        return score;
+    }
+}
+
+
+@RestController
+@RequestMapping("/mq")
+public class MQController {
+
+    private final MQMessageConverter converter;
+
+    public MQController(MQMessageConverter converter) {
+        this.converter = converter;
+    }
+
+    @PostMapping("/convert")
+    public ResponseEntity<String> convertFile(@RequestParam("file") MultipartFile file) {
+        try {
+            // Read raw bytes exactly as they are
+            byte[] fileBytes = file.getBytes();
+
+            // Decode using EBCDIC-aware converter
+            String result = converter.decodeMessage(fileBytes);
+
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body("Error processing file: " + e.getMessage());
+        }
+    }
+}

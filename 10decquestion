@@ -231,3 +231,45 @@ factory.setConcurrency("1-5");
 return factory;
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+@JmsListener(destination = "${app.ibm.mq.queue}")
+public void receiveMessage(Message message) {
+    try {
+        byte[] body;
+
+        if (message instanceof TextMessage) {
+            // Warning: TextMessage.getText() is NOT safe
+            // MQ returns Java String only if CCSID conversion is enabled
+            String raw = ((TextMessage) message).getText();
+
+            // But the text is corrupted, so we must retrieve bytes:
+            body = raw.getBytes("Cp500");  // Re-wrap as IBM500 bytes
+        }
+        else if (message instanceof BytesMessage) {
+            BytesMessage bm = (BytesMessage) message;
+            body = new byte[(int) bm.getBodyLength()];
+            bm.readBytes(body);
+        }
+        else {
+            throw new RuntimeException("Unsupported message type");
+        }
+
+        // Decode properly
+        String decoded = new String(body, "Cp500");
+        System.out.println("Decoded MQ message: " + decoded);
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}

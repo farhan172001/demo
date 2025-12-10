@@ -503,3 +503,12 @@ public class MQMessageReceiver {
         System.out.println("MQ message saved to: " + fileName);
     }
 }
+
+
+
+
+Enumeration<String> propertyNames = message.getPropertyNames();
+            while (propertyNames.hasMoreElements()) {
+                String name = propertyNames.nextElement();
+                System.out.println("Property: " + name + " = " + message.getObjectProperty(name));
+            }

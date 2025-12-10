@@ -166,3 +166,68 @@ tem() ( BĀZĀZING-DÉÀÊN22]>a^i2]-22pizinéäze>PICĀĀRäMÃà, à; AMÇÁ&^
 ) [)[BEBIC)] BÃ MÍñÇ, AgèÉ! *8¢È)Ã.ẞ1]28)ii++]ÁéäÉME_Ñøã) [N<&A>22_BDĀin; ÉS MÉ) Cimaams-Acoán
 
 (ÁrÃae/-A&Aéèdièno! 2%<ÍN; BÁ&Nñààñdëse[A]% praeda
+
+
+
+
+
+
+
+
+
+
+
+
+@Bean 1 usage & Vennapusa Siva Mohan Reddy - Contractor *
+
+public ConnectionFactory customMqConnectionFactory() throws Exception {
+
+System.out.println("Custom config is used");
+
+JmsFactoryFactory ff JmsFactoryFactory.getInstance(WMQConstants.JAKARTA_WMQ_PROVIDER);
+
+JmsConnectionFactory cf ff.createConnectionFactory();
+
+cf.setStringProperty (WMQConstants.WMQ_HOST_NAME, host);
+
+cf.setIntProperty(WMQConstants.WMQ_PORT, port);
+
+cf.setStringProperty (WMQConstants.WMQ_CHANNEL, channel);
+
+cf.setStringProperty (WMQConstants.WMQ_QUEUE_MANAGER, queueManager);
+
+cf.setIntProperty(WMQConstants.WMQ_CONNECTION_MODE, WMQConstants.WMQ_CM_CLIENT);
+
+// Credentials
+
+cf.setStringProperty (WMQConstants. USERID, user);
+
+cf.setStringProperty (WMQConstants.PASSWORD, password);
+
+cf.setBooleanProperty(WMQConstants.USER_AUTHENTICATION_MQCSP, b: true);
+
+}
+
+return cf;
+
+
+
+@Bean no usages & Vennapusa Siva Mohan Reddy - Contractor
+
+public DefaultJmsListenerContainerFactory jmsListener ContainerFactory() throws Exception {
+
+DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
+
+factory.setConnectionFactory (customMqConnectionFactory());
+
+factory.setSessionTransacted(true); // enable transactional session
+
+// concurrency: min-max consumers (adjust to your throughput)
+
+factory.setConcurrency("1-5");
+
+// factory.setErrorHandler(t -> LOGGER.error("Listener error", t));
+
+return factory;
+
+}

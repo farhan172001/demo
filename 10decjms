@@ -1,0 +1,225 @@
+@JmsListener(destination = "${app.ibm.mq.queue}")
+public void receiveMessage(BytesMessage message) {
+    try {
+        byte[] rawBytes = extractBytes(message);
+        pdfService.processIncomingMessage(rawBytes);
+    } catch (Exception e) {
+        log.error("Error processing MQ message: ", e);
+    }
+}
+
+
+private byte[] extractBytes(BytesMessage msg) throws JMSException {
+    byte[] data = new byte[(int) msg.getBodyLength()];
+    msg.readBytes(data);
+    return data;
+}
+
+
+
+
+
+
+
+
+
+CLAUDE
+
+
+
+
+import org.springframework.jms.annotation.JmsListener;
+import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+
+import javax.jms.BytesMessage;
+import javax.jms.JMSException;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.util.Arrays;
+import java.util.UUID;
+
+@Component
+public class MQMessageReceiver {
+    
+    private static final Logger log = LoggerFactory.getLogger(MQMessageReceiver.class);
+    private static final Charset IBM500_CHARSET = Charset.forName("IBM500");
+    private static final int HEADER_SIZE = 32;
+    
+    @Value("${app.file.output.data.path}")
+    private String dataFilePath;
+    
+    @Value("${app.file.output.metadata.path}")
+    private String metadataFilePath;
+    
+    @Value("${app.metadata.splitter:@}")
+    private String metadataSplitter;
+    
+    @Value("${app.file.type:PDF}")
+    private String fileType;
+    
+    private int messageCounter = 0;
+
+    /**
+     * CORRECT WAY: Use BytesMessage instead of String
+     * This receives binary messages containing EBCDIC metadata + PDF/TIFF content
+     */
+    @JmsListener(destination = "${app.ibm.mq.queue}")
+    public void receiveMessage(BytesMessage bytesMessage) {
+        try {
+            log.info("Received MQ BytesMessage");
+            
+            // Step 1: Read the entire message as byte array
+            byte[] messageContent = readBytesMessage(bytesMessage);
+            
+            if (messageContent == null || messageContent.length <= HEADER_SIZE) {
+                log.warn("Message too short or empty. Length: {}", 
+                    messageContent != null ? messageContent.length : 0);
+                return;
+            }
+            
+            log.info("Total message length: {} bytes", messageContent.length);
+            
+            // Step 2: Skip first 32 bytes (header) and extract payload
+            byte[] payloadWithoutHeader = Arrays.copyOfRange(
+                messageContent, 
+                HEADER_SIZE, 
+                messageContent.length
+            );
+            
+            log.info("Payload length after removing header: {} bytes", 
+                payloadWithoutHeader.length);
+            
+            // Step 3: Convert payload to EBCDIC string to extract metadata
+            String payloadAsEbcdicString = new String(
+                payloadWithoutHeader, 
+                IBM500_CHARSET
+            );
+            
+            // Step 4: Split to separate metadata from binary content
+            String[] metadataArray = payloadAsEbcdicString.split(metadataSplitter);
+            
+            // Step 5: Extract metadata (skip first element, concatenate rest)
+            StringBuilder metadata = new StringBuilder();
+            if (metadataArray != null && metadataArray.length > 1) {
+                for (int i = 1; i < metadataArray.length; i++) {
+                    metadata.append(metadataArray[i]);
+                }
+            }
+            
+            String metadataContent = metadata.toString();
+            log.info("Extracted metadata length: {} characters", metadataContent.length());
+            log.info("Metadata preview: {}", 
+                metadataContent.length() > 100 
+                    ? metadataContent.substring(0, 100) + "..." 
+                    : metadataContent);
+            
+            // Step 6: Generate unique filenames
+            String uniqueId = UUID.randomUUID().toString();
+            messageCounter++;
+            
+            String fileExtension = fileType.equalsIgnoreCase("TIFF") ? ".tif" : ".pdf";
+            String dataFileName = String.format("data_%s_%d%s", 
+                uniqueId, messageCounter, fileExtension);
+            String metadataFileName = String.format("metadata_%s_%d.txt", 
+                uniqueId, messageCounter);
+            
+            // Step 7: Create the two files
+            boolean success = createFiles(
+                payloadWithoutHeader, 
+                metadataContent,
+                dataFileName,
+                metadataFileName
+            );
+            
+            if (success) {
+                log.info("Successfully created files: {} and {}", 
+                    dataFileName, metadataFileName);
+            } else {
+                log.error("Failed to create files");
+            }
+            
+        } catch (JMSException e) {
+            log.error("JMS Error processing message: {}", e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("Error processing MQ message: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Reads BytesMessage into byte array
+     */
+    private byte[] readBytesMessage(BytesMessage bytesMessage) throws JMSException {
+        long messageLength = bytesMessage.getBodyLength();
+        byte[] messageContent = new byte[(int) messageLength];
+        bytesMessage.readBytes(messageContent);
+        return messageContent;
+    }
+    
+    /**
+     * Creates two files:
+     * 1. Data file (PDF/TIFF) - binary content
+     * 2. Metadata file - human-readable text
+     */
+    private boolean createFiles(
+            byte[] binaryContent,
+            String metadata,
+            String dataFileName,
+            String metadataFileName) {
+        
+        File dataFile = null;
+        File metadataFile = null;
+        
+        try {
+            // Create data file (PDF/TIFF)
+            String dataFileFullPath = dataFilePath + File.separator + dataFileName;
+            dataFile = new File(dataFileFullPath);
+            
+            // Ensure parent directory exists
+            dataFile.getParentFile().mkdirs();
+            
+            try (FileOutputStream fos = new FileOutputStream(dataFile)) {
+                fos.write(binaryContent);
+                fos.flush();
+            }
+            
+            log.info("Created data file: {}", dataFileFullPath);
+            log.info("Data file size: {} bytes", dataFile.length());
+            
+            // Create metadata file (human-readable text)
+            String metadataFileFullPath = metadataFilePath + File.separator + metadataFileName;
+            metadataFile = new File(metadataFileFullPath);
+            
+            // Ensure parent directory exists
+            metadataFile.getParentFile().mkdirs();
+            
+            try (FileOutputStream fos = new FileOutputStream(metadataFile)) {
+                // Write metadata as UTF-8 text (human-readable)
+                fos.write(metadata.getBytes("UTF-8"));
+                fos.flush();
+            }
+            
+            log.info("Created metadata file: {}", metadataFileFullPath);
+            log.info("Metadata file size: {} bytes", metadataFile.length());
+            
+            return true;
+            
+        } catch (IOException e) {
+            log.error("Error creating files: {}", e.getMessage(), e);
+            
+            // Cleanup on failure
+            if (dataFile != null && dataFile.exists()) {
+                dataFile.delete();
+            }
+            if (metadataFile != null && metadataFile.exists()) {
+                metadataFile.delete();
+            }
+            
+            return false;
+        }
+    }
+}

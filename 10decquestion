@@ -364,3 +364,77 @@ public void receiveMessage(Message message) {
         e.printStackTrace();
     }
 }
+
+
+
+
+
+
+
+import jakarta.jms.BytesMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.TextMessage;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.springframework.jms.annotation.JmsListener;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.file.Paths;
+
+@Component
+public class MQMessageReceiver {
+
+    @JmsListener(destination = "${app.ibm.mq.queue}")
+    public void receiveMessage(Message message) {
+        try {
+            String decoded = null;
+
+            if (message instanceof BytesMessage bytesMessage) {
+                byte[] data = new byte[(int) bytesMessage.getBodyLength()];
+                bytesMessage.readBytes(data);
+                decoded = new String(data, Charset.forName("Cp500"));
+
+            } else if (message instanceof TextMessage textMessage) {
+                String raw = textMessage.getText();
+                decoded = new String(raw.getBytes("ISO-8859-1"), Charset.forName("Cp500"));
+            }
+
+            if (decoded != null) {
+                System.out.println("Decoded MQ Message:\n" + decoded);
+                writeTextToPDF(decoded, "output.pdf"); // Save as PDF
+            }
+
+        } catch (JMSException | IOException e) {
+            System.err.println("Error processing MQ message: " + e.getMessage());
+        }
+    }
+
+    private void writeTextToPDF(String text, String filePath) throws IOException {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+
+            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+                contentStream.setFont(PDType1Font.HELVETICA, 12);
+                contentStream.beginText();
+                contentStream.setLeading(14.5f);
+                contentStream.newLineAtOffset(50, 700);
+
+                String[] lines = text.split("\n");
+                for (String line : lines) {
+                    contentStream.showText(line);
+                    contentStream.newLine();
+                }
+
+                contentStream.endText();
+            }
+
+            document.save(Paths.get(filePath).toFile());
+        }
+    }
+}

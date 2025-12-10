@@ -248,3 +248,9 @@ public void receiveMessage(Message message) {
         System.err.println("Error processing MQ message: " + e.getMessage());
     }
 }
+
+
+private void savePdf(byte[] data) throws IOException {
+    Path out = Paths.get("output.pdf");
+    Files.write(out, data);
+}

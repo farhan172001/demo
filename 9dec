@@ -125,3 +125,35 @@ public class MQMessageConverter {
 
 spring.servlet.multipart.max-file-size=50MB
 spring.servlet.multipart.max-request-size=50MB
+
+
+
+@Component
+public class MQMessageConverter {
+
+    // Try common MQ encodings
+    private static final String[] CHARSETS = {
+            "UTF-8",
+            "ISO-8859-1",
+            "Cp1252",
+            "Cp1047",   // IBM MQ EBCDIC encoding
+            "Cp500"     // Another common MQ EBCDIC
+    };
+
+    public String convertBytesToText(byte[] messageBytes) {
+        for (String cs : CHARSETS) {
+            try {
+                String decoded = new String(messageBytes, cs);
+
+                // If decoded text has fewer corrupted symbols, return it
+                if (!decoded.contains("Ã") && !decoded.contains("?")) {
+                    System.out.println("Decoded using charset: " + cs);
+                    return decoded;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Fallback
+        return new String(messageBytes);
+    }
+}

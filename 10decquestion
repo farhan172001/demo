@@ -327,3 +327,40 @@ public void receiveMessage(Message message) {
 
 
 
+
+
+
+
+
+
+
+
+@JmsListener(destination = "${app.ibm.mq.queue}")
+public void receiveMessage(Message message) {
+    try {
+        if (!(message instanceof TextMessage)) {
+            throw new RuntimeException("Expected TextMessage, received: " + message.getClass());
+        }
+
+        TextMessage tm = (TextMessage) message;
+
+        // MQ already converted EBCDIC → UTF-8 String (corrupted binary)
+        String text = tm.getText();
+
+        // Convert BACK to original EBCDIC bytes
+        byte[] originalBytes = text.getBytes("Cp500");
+
+        // Skip the first 32 header bytes
+        byte[] payload = Arrays.copyOfRange(originalBytes, 32, originalBytes.length);
+
+        // Save PDF/TIFF
+        FileOutputStream fos = new FileOutputStream("output.pdf");
+        fos.write(payload);
+        fos.close();
+
+        System.out.println("Recovered PDF file successfully.");
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}

@@ -438,3 +438,12 @@ public class MQMessageReceiver {
         }
     }
 }
+
+
+
+
+<dependency>
+    <groupId>org.apache.pdfbox</groupId>
+    <artifactId>pdfbox</artifactId>
+    <version>3.1.0</version> <!-- latest stable version -->
+</dependency>

@@ -447,3 +447,59 @@ public class MQMessageReceiver {
     <artifactId>pdfbox</artifactId>
     <version>3.1.0</version> <!-- latest stable version -->
 </dependency>
+
+
+
+import jakarta.jms.BytesMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.TextMessage;
+import org.springframework.jms.annotation.JmsListener;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+@Component
+public class MQMessageReceiver {
+
+    @JmsListener(destination = "${app.ibm.mq.queue}")
+    public void receiveMessage(Message message) {
+        try {
+            String decoded = null;
+
+            if (message instanceof BytesMessage bytesMessage) {
+                byte[] data = new byte[(int) bytesMessage.getBodyLength()];
+                bytesMessage.readBytes(data);
+                decoded = new String(data, Charset.forName("Cp500")); // IBM500 → readable
+
+            } else if (message instanceof TextMessage textMessage) {
+                String raw = textMessage.getText();
+                decoded = new String(raw.getBytes("ISO-8859-1"), Charset.forName("Cp500"));
+            }
+
+            if (decoded != null) {
+                System.out.println("Decoded MQ Message:\n" + decoded);
+                saveToTextFile(decoded);
+            }
+
+        } catch (JMSException | IOException e) {
+            System.err.println("Error processing MQ message: " + e.getMessage());
+        }
+    }
+
+    private void saveToTextFile(String text) throws IOException {
+        // Create a timestamped file name
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String fileName = "MQMessage_" + timestamp + ".txt";
+
+        // Save the decoded text to the file
+        Files.write(Paths.get(fileName), text.getBytes(Charset.forName("UTF-8")));
+
+        System.out.println("MQ message saved to: " + fileName);
+    }
+}

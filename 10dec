@@ -121,3 +121,59 @@ public class MQMessageConverter {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@Component
+public class MQMessageDecoder {
+
+    public String decode(byte[] data) throws Exception {
+        // MQ header says JMS_IBM_Character_Set: IBM500
+        return new String(data, "Cp500"); // Java charset for IBM500
+    }
+}
+
+
+
+
+@RestController
+@RequestMapping("/mq")
+public class MQFileController {
+
+    @Autowired
+    private MQMessageDecoder decoder;
+
+    @Autowired
+    private MQProcessingService processingService;
+
+    @PostMapping("/decode")
+    public ResponseEntity<?> decodeFile(@RequestParam("file") MultipartFile file) {
+        try {
+            byte[] rawData = file.getBytes();  // raw MQ message content
+
+            // Step 1: Decode IBM500 → UTF-8
+            String decoded = decoder.decode(rawData);
+
+            // Step 2: Additional processing (future PDF etc.)
+            String finalOutput = processingService.processDecodedMessage(decoded);
+
+            return ResponseEntity.ok(finalOutput);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body("Error decoding MQ file: " + e.getMessage());
+        }
+    }
+}

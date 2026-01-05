@@ -285,3 +285,39 @@ void getById_whenOpptRecIdIsNull_shouldReturnEmpty() throws Exception {
     // repository should NOT be called
     verify(repository, never()).findById(any());
 }
+
+
+
+
+
+
+
+@Test
+void isRetryable_whenAwsServiceExceptionWith5xx_shouldReturnTrue() throws Exception {
+    AwsServiceException ase = AwsServiceException.builder()
+            .statusCode(500)
+            .message("AWS internal error")
+            .build();
+
+    Method method = SGeiOpportunityServiceImpl.class
+            .getDeclaredMethod("isRetryable", Throwable.class);
+    method.setAccessible(true);
+
+    boolean result = (boolean) method.invoke(null, ase);
+
+    assertTrue(result);
+}
+
+
+
+
+@Test
+void isRetryable_whenExceptionIsNull_shouldReturnFalse() throws Exception {
+    Method method = SGeiOpportunityServiceImpl.class
+            .getDeclaredMethod("isRetryable", Throwable.class);
+    method.setAccessible(true);
+
+    boolean result = (boolean) method.invoke(null, new Object[]{null});
+
+    assertFalse(result);
+}

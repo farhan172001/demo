@@ -249,3 +249,23 @@ If you want, I can:
 Map each test → exact line number
 
 Or rewrite these tests in your project’s exact naming/style
+
+
+
+Test 3.1 updated: 
+@Test
+@DisplayName("saveOpportunityEvent() should wrap Kafka failure in DataProcessingException")
+void save_whenKafkaFails_shouldThrowDataProcessingException() throws Exception {
+
+    when(repository.findById("R-123")).thenReturn(Optional.empty());
+    when(repository.save(any(Data.class))).thenReturn(validData);
+
+    doThrow(new RuntimeException("Kafka down"))
+        .when(producerFileTransfer)
+        .send(any());
+
+    assertThrows(
+        DataProcessingException.class,
+        () -> service.saveOpportunityEvent(event)
+    );
+}

@@ -269,3 +269,19 @@ void save_whenKafkaFails_shouldThrowDataProcessingException() throws Exception {
         () -> service.saveOpportunityEvent(event)
     );
 }
+
+
+
+
+@Test
+@DisplayName("getOpportunityEventById() should return empty Optional when opptRecId is null")
+void getById_whenOpptRecIdIsNull_shouldReturnEmpty() throws Exception {
+
+    Optional<Data> result = service.getOpportunityEventById(null);
+
+    assertNotNull(result);
+    assertTrue(result.isEmpty());
+
+    // repository should NOT be called
+    verify(repository, never()).findById(any());
+}

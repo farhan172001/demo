@@ -1,0 +1,251 @@
+Perfect 👍
+Now that you’ve isolated only the new AppLogger-added code, we can be very precise and write the minimum tests needed to increase coverage, without testing the logger itself.
+
+⚠️ Important principle (Sonar/JaCoCo)
+You do NOT need to verify AppLogger calls.
+Coverage increases automatically when the execution flow passes through those lines.
+
+
+---
+
+What exactly needs coverage (from your shared code)
+
+Your new code introduced new executable lines inside these branches:
+
+Branches that must be hit
+
+1️⃣ existingData.isPresent() → TRUE
+2️⃣ existingData.isPresent() → FALSE
+3️⃣ Kafka publish SUCCESS path
+4️⃣ Kafka publish FAILURE path (catch)
+5️⃣ isRetryable(e) == true
+6️⃣ getOpportunityEventById() → catch block
+
+Your current tests already cover 1 & 2 partially, but 3–6 are missing.
+
+
+---
+
+Minimal tests to add (exact & sufficient)
+
+Below are READY-TO-PASTE tests focused only on the new logger paths.
+
+
+---
+
+✅ TEST 1: ELSE branch + Kafka SUCCESS (covers 3 loggers)
+
+Covers:
+
+existingData.isPresent() == false
+
+Save success
+
+Kafka publish success
+
+All DEBUG logs in this flow
+
+
+@Test
+@DisplayName("saveOpportunityEvent() should cover new-record + kafka success path")
+void save_newRecord_kafkaSuccess_shouldReturnMerged() throws Exception {
+
+    when(repository.findById("R-123")).thenReturn(Optional.empty());
+    when(repository.save(any(Data.class))).thenReturn(validData);
+
+    // producer succeeds (default behavior)
+    doNothing().when(producer).send(any());
+
+    Data result = service.saveOpportunityEvent(event);
+
+    assertNotNull(result);
+    assertEquals("R-123", result.getOpptReconId());
+
+    verify(repository).findById("R-123");
+    verify(repository).save(any(Data.class));
+    verify(producer).send(any());
+}
+
+✔ Hits:
+
+does not exist logger
+
+stored successfully logger
+
+Publishing data to Kafka logger
+
+Published data to Kafka logger
+
+
+
+---
+
+✅ TEST 2: EXISTING record + merge path (covers IF logger)
+
+@Test
+@DisplayName("saveOpportunityEvent() should cover existing-record merge path")
+void save_existingRecord_shouldMergeAndSave() throws Exception {
+
+    Data existing = createValidData("R-123");
+    when(repository.findById("R-123")).thenReturn(Optional.of(existing));
+    when(repository.save(any(Data.class))).thenReturn(validData);
+
+    doNothing().when(producer).send(any());
+
+    Data result = service.saveOpportunityEvent(event);
+
+    assertNotNull(result);
+
+    verify(repository).findById("R-123");
+    verify(repository).save(any(Data.class));
+}
+
+✔ Hits:
+
+already exist logger
+
+Merge logic
+
+Save logger
+
+
+
+---
+
+✅ TEST 3: Kafka FAILURE → AESBackoffRequiredException (critical)
+
+Covers:
+
+Kafka catch
+
+Error logger
+
+Backoff exception
+
+
+@Test
+@DisplayName("saveOpportunityEvent() should throw AESBackoffRequiredException when Kafka publish fails")
+void save_whenKafkaFails_shouldThrowBackoff() throws Exception {
+
+    when(repository.findById("R-123")).thenReturn(Optional.empty());
+    when(repository.save(any(Data.class))).thenReturn(validData);
+
+    doThrow(new RuntimeException("Kafka down"))
+        .when(producer)
+        .send(any());
+
+    assertThrows(
+        AESBackoffRequiredException.class,
+        () -> service.saveOpportunityEvent(event)
+    );
+}
+
+✔ Hits:
+
+"Failed to publish to Kafka" logger
+
+AESBackoffRequiredException path
+
+
+
+---
+
+✅ TEST 4: Retryable AWS exception (covers isRetryable == true)
+
+@Test
+@DisplayName("saveOpportunityEvent() should retry when AWS retryable exception occurs")
+void save_whenRetryableAwsException_shouldThrowBackoff() {
+
+    when(repository.findById("R-123"))
+        .thenThrow(SdkClientException.create("AWS timeout"));
+
+    assertThrows(
+        AESBackoffRequiredException.class,
+        () -> service.saveOpportunityEvent(event)
+    );
+}
+
+✔ Hits:
+
+AWS retry logger
+
+isRetryable(e) branch
+
+
+
+---
+
+✅ TEST 5: getOpportunityEventById() catch block (NEW LOGGER)
+
+@Test
+@DisplayName("getOpportunityEventById() should throw ResourceNotFoundException on error")
+void getById_whenRepositoryThrows_shouldThrowResourceNotFound() {
+
+    when(repository.findById("R-123"))
+        .thenThrow(new RuntimeException("DB failure"));
+
+    assertThrows(
+        ResourceNotFoundException.class,
+        () -> service.getOpportunityEventById("R-123")
+    );
+}
+
+✔ Hits:
+
+DEBUG logger
+
+INFO logger
+
+ERROR logger
+
+catch block
+
+
+
+---
+
+Why this is enough (Sonar logic)
+
+✅ Logger lines are executed
+
+✅ All new branches are covered
+
+✅ No mocking of logger needed
+
+✅ No production code changes
+
+
+👉 Coverage on new code = ~100%
+
+
+---
+
+One important correction (PLEASE FIX)
+
+Your logger placeholders are still wrong in shared code 👇
+
+❌
+
+"Record with given opptRecId already exist: (), Updating record with gpNumber: ()"
+
+✅ Must be:
+
+"Record with given opptRecId already exist: {}, Updating record with gpNumber: {}"
+
+⚠️ Placeholder mismatch can again fail CI.
+
+
+---
+
+Final summary
+
+> You don’t test AppLogger — you test the execution paths where AppLogger lives.
+Add these 5 tests and CI + coverage will pass cleanly.
+
+
+
+If you want, I can:
+
+Map each test → exact line number
+
+Or rewrite these tests in your project’s exact naming/style

@@ -1703,3 +1703,61 @@ Rewrite this in executive / architecture review language
 
 
 Just tell me 👍
+
+
+
+
+
+
+
+
+
+
+
+
+
+MongoDB Logging – Reason, Input, Output (Short)
+
+Reason
+MongoDB is used to persist the SF MQ message for audit, traceability, and troubleshooting.
+It ensures the exact payload sent to SF MQ can be tracked using a transaction ID, even if downstream systems fail.
+
+
+---
+
+Input
+
+1. SF MQ JSON message
+
+
+
+{
+  "DCRequest": {
+    "docType": "Invoice",
+    "caseNumber": "PLAN-28532",
+    "fileNetGUID": "{9170389C-C123-40AC-9809-025EDC7BBEF1}"
+  }
+}
+
+2. Transaction ID (from MQ metadata – optional)
+EX_METADATA_TRANSACTION_ID
+
+
+
+
+---
+
+Output
+
+A MongoDB document containing:
+
+transactionID
+
+msg (SF MQ JSON payload)
+
+timestamp (auto-generated)
+
+
+
+✔ Logged asynchronously
+✔ Does not block SF MQ publishing

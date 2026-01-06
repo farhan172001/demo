@@ -1,0 +1,1410 @@
+Perfect 👍
+Below is a clean, corrected, end-to-end rewritten document for your EOSTSF application, modeled exactly like the reference document you shared, but strictly aligned with YOUR code, correct inputs/outputs, and special focus on SF MQ + MongoDB logging.
+
+You can directly copy-paste this into your PDF document.
+
+
+---
+
+EOSTSF FileNet Adapter – Complete Process Flow & Input / Output Analysis
+
+
+---
+
+A. Initialization and Configuration
+
+1. Trigger Mechanism (Scheduler / Async Execution)
+
+The EOSTSF application execution starts when the scheduler triggers the processTask() method of EOSTSFServiceImpl.
+
+The method is annotated with @Async, allowing parallel execution.
+
+Each execution represents one logical transaction.
+
+
+
+---
+
+2. Transaction & Thread Context Initialization
+
+At the beginning of processTask():
+
+Inputs Generated Internally
+
+AflacTransactionID → Generated using UUID.randomUUID()
+
+Thread Identity → <ContainerID>_<Timestamp>
+
+
+These values are stored in:
+
+EOSTSFThreadLocal.threadAflacTransactionID
+
+EOSTSFThreadLocal.threadIdentity
+
+
+Purpose
+
+Enables transaction-level tracing
+
+Used across FileNet upload, SF MQ messaging, and MongoDB logging
+
+
+
+---
+
+3. Load Configuration from MongoDB
+
+Input
+
+Application Key: EOSTSFApplication.key
+
+
+Code Path
+
+getConfiguration(key)
+→ eisfnaConfigurationDAO.findByKey(key)
+
+Output
+
+Fully populated EOSTSFConfiguration object containing:
+
+MQ Adapter details
+
+SF MQ connection details
+
+FileNet configuration
+
+File path settings
+
+Operational flags
+
+
+
+
+---
+
+4. Dynamic File Path Setup
+
+Based on configuration and thread identity, the following directories are constructed:
+
+<BasePath>/<ThreadIdentity>/
+ ├── unprocessed/
+ │   ├── data/
+ │   └── metadata/
+ ├── processed/
+ │   ├── data/
+ │   └── metadata/
+ └── error/<ThreadIdentity>/
+
+These paths are injected back into configuration.getMqAdapter().
+
+Output
+
+Runtime-ready directory structure unique per transaction
+
+
+
+---
+
+B. Reading Messages from IBM MQ and Creating Local Files
+
+1. Connecting to IBM MQ
+
+Input
+
+MQ connection details from MongoDB configuration
+
+Queue Name
+
+Channel
+
+Queue Manager
+
+Host & Port
+
+
+Code
+
+mqFileReaderUtil.readQueueAndCreateFiles(configuration)
+
+
+---
+
+2. MQ Message Structure (Input)
+
+Each MQ message arrives as a byte array with the following logical structure:
+
+[ MQ HEADER ][ METADATA ][ METADATA_DELIMITER ][ FILE_DATA ]
+
+Header length is fixed and removed
+
+Remaining bytes are EBCDIC encoded
+
+
+
+---
+
+3. Header Removal and EBCDIC Conversion
+
+Processing
+
+MQ header is stripped
+
+Remaining bytes converted using charset ibm500
+
+
+Resulting String
+
+", DocType, Invoice; DocID, 12345; Date, 2024-05-01 21yhw1qhwyl2wyiu2hwh18sy981us919"
+
+
+---
+
+4. Metadata and File Data Extraction
+
+The string is split using the configured metadata delimiter:
+
+String[] metaDataStringArray = byteArrayWithoutHeaderAsString.split(delimiter);
+
+Result
+
+metaDataStringArray[1] → Metadata String
+metaDataStringArray[2] → File Data String
+
+Example
+
+Metadata String:
+DocType, Invoice; DocID, 12345; Date, 2024-05-01
+
+File Data String:
+21yhw1qhwyl2wyiu2hwh18sy981us919
+
+
+---
+
+5. Local File Creation (Output)
+
+File Type	Location	Contents
+
+Data File	unprocessed/data/mydoc1.pdf	Binary document
+Metadata File	unprocessed/metadata/mydoc1.txt	Raw metadata string
+
+
+⚠️ Important
+
+Metadata file contains ONLY MQ-provided data
+
+No transaction ID is present at this stage
+
+
+
+---
+
+C. Processing Files and Uploading to FileNet
+
+1. Reading Metadata File
+
+Input
+
+Metadata text file from /unprocessed/metadata
+
+
+Processing
+
+Parsed into Map<String, String>
+
+
+Result
+
+{
+  "DocType": "Invoice",
+  "DocID": "12345",
+  "Date": "2024-05-01"
+}
+
+
+---
+
+2. Injecting Internal Transaction Metadata
+
+If EX_METADATA_TRANSACTION_ID is not present:
+
+Generated Internally
+
+EX_METADATA_TRANSACTION_ID = UUID (ThreadLocal)
+
+Updated Metadata Map
+
+{
+  "DocType": "Invoice",
+  "DocID": "12345",
+  "Date": "2024-05-01",
+  "EX_METADATA_TRANSACTION_ID": "generated-uuid"
+}
+
+⚠️ This field:
+
+Is not part of MQ input
+
+Is not written back to metadata file
+
+Exists only in memory for FileNet & logging
+
+
+
+---
+
+3. FileNet Payload Construction
+
+Input
+
+Binary file
+
+Enriched metadata map
+
+
+Payload
+
+Multipart/form-data HTTP request
+
+
+Part 1 → file (binary)
+Part 2 → metadata (JSON)
+
+
+---
+
+4. FileNet Upload Outcome
+
+a) Success
+
+Output
+
+Files moved:
+
+
+unprocessed → processed
+
+b) Failure
+
+Output
+
+Files moved:
+
+
+unprocessed → error/<ThreadIdentity>
+
+Exception details saved to MongoDB
+
+Alert email triggered
+
+
+
+---
+
+D. SF MQ Message Publishing
+
+1. Purpose of SF MQ Message
+
+After successful FileNet processing, EOSTSF publishes a message to SF MQ for downstream systems.
+
+
+---
+
+2. SF MQ Input Message
+
+Input Data
+
+Transaction ID
+
+Processing status
+
+FileNet response details
+
+Business metadata reference
+
+
+Code
+
+MQClient.sendMsgToSFMQ(configuration, message)
+
+
+---
+
+3. MQ Client Behavior
+
+Steps
+
+1. Creates MQ connection using SF MQ config
+
+
+2. Opens session and sender
+
+
+3. Sends message as TextMessage
+
+
+4. Uses NON_PERSISTENT delivery mode
+
+
+
+Output
+
+Message successfully posted to SF MQ queue
+
+
+
+---
+
+E. MongoDB Logging and Error Handling
+
+1. What Is Logged to MongoDB
+
+For any exception:
+
+Exception message
+
+Stack trace
+
+Timestamp
+
+Transaction ID
+
+
+Stored Using
+
+EOSTSFExceptionLogRepository.save(exLog)
+
+
+---
+
+2. Email Notifications
+
+On critical failure:
+
+Email sent with exception details
+
+Ensures operational visibility
+
+
+
+---
+
+F. Cleanup and Finalization
+
+1. Directory Cleanup
+
+On success or no MQ messages:
+
+deleteFilesAndDirectory(threadBaseFileDirectory)
+
+On failure:
+
+moveFilesToErrorDirectory(errorPath, threadBaseFileDirectory)
+
+
+---
+
+G. Complete Input / Output Summary
+
+Inputs
+
+Source	Data
+
+IBM MQ	Document + metadata (EBCDIC)
+MongoDB	Configuration
+System	Environment variables
+
+
+
+---
+
+Outputs
+
+Target	Output
+
+File System	Processed / Error files
+FileNet	Document + metadata
+SF MQ	Status message
+MongoDB	Exception logs
+Email	Failure alerts
+
+
+
+---
+
+H. Key Architectural Difference from Other Adapters
+
+Feature	EOSTSF
+
+Transaction ID	Generated internally
+MQ Payload	No transaction ID
+SF MQ	Enabled
+MongoDB Logging	Enabled
+Metadata Enrichment	Runtime only
+
+
+
+---
+
+Final One-Line Summary
+
+EOSTSF reads documents from MQ, creates local files, enriches metadata internally, uploads to FileNet, publishes status to SF MQ, logs failures to MongoDB, and ensures clean transactional isolation using thread-based identities.
+
+
+---
+
+If you want next:
+
+Architecture diagram text
+
+Sequence flow (1-to-1 steps)
+
+Executive summary for design review
+
+Production readiness notes
+
+
+Just tell me 👍
+
+
+
+
+
+
+
+
+
+You’re thinking in the right direction, and your doubt is 100% valid 👍
+Let’s align this strictly with your actual code behavior, not assumptions from other adapters.
+
+I’ll explain exactly what your metadata looks like, where EX_METADATA_TRANSACTION_ID comes from, and what actually gets saved in metadata vs what is injected later — in copy-paste ready wording.
+
+
+---
+
+How Metadata Is Actually Formed in EOSTSF (As Per Code)
+
+1. What MQ Really Sends (After Header Removal)
+
+According to your code flow:
+
+MQ message is read as byte[]
+
+First 32 bytes (header) are removed
+
+Remaining bytes are converted from EBCDIC → String
+
+
+So yes ✅
+
+byteArrayWithoutHeaderAsString will look exactly like this kind of string:
+
+, DocType, Invoice; DocID, 12345; Date, 2024-05-01 21yhw1qhwyl2wyiu2hwh18sy981us919
+
+There is NO EX_METADATA_TRANSACTION_ID here coming from MQ.
+
+
+---
+
+2. Metadata Split Logic (Important)
+
+Your code uses a configured metadata delimiter (from Mongo config).
+
+Example delimiter:
+
+<metadata-delimiter> = " "
+
+(or any special delimiter defined in config)
+
+After split:
+
+String[] metaDataStringArray =
+    byteArrayWithoutHeaderAsString.split(metadataDelimiter);
+
+Resulting array (based on your example):
+
+metaDataStringArray[0] = ""
+metaDataStringArray[1] = "DocType, Invoice; DocID, 12345; Date, 2024-05-01"
+metaDataStringArray[2] = "21yhw1qhwyl2wyiu2hwh18sy981us919"
+
+✔ This matches your understanding perfectly
+
+
+---
+
+3. What Is Considered Metadata vs File Data
+
+Code Behavior:
+
+metadataString = metaDataStringArray[1];
+fileDataString = metaDataStringArray[2];
+
+So:
+
+Variable	Contains
+
+metadataString	Business metadata (DocType, DocID, Date…)
+fileDataString	Raw binary document data
+
+
+
+---
+
+4. How Metadata File Is Created
+
+Metadata saved exactly as-is (no transaction ID added yet):
+
+Saved file:
+
+unprocessed/metadata/mydoc1.txt
+
+Contents of metadata file:
+
+DocType, Invoice; DocID, 12345; Date, 2024-05-01
+
+⚠️ Important:
+
+No EX_METADATA_TRANSACTION_ID
+
+No FileNet GUID
+
+No internal system fields
+
+
+This metadata file is a pure reflection of MQ input
+
+
+---
+
+5. So Where Does EX_METADATA_TRANSACTION_ID Come From?
+
+This is the key confusion point, and here is the correct answer:
+
+👉 It is NOT part of MQ metadata
+
+👉 It is NOT saved in the metadata text file
+
+👉 It is INJECTED PROGRAMMATICALLY BEFORE FILE-NET UPLOAD
+
+
+---
+
+6. Exact Code Logic That Adds EX_METADATA_TRANSACTION_ID
+
+When metadata file is read for upload:
+
+Map<String, String> metaDataMap = getMetaDataMap(metadataFile);
+
+Then:
+
+if (!metaDataMap.containsKey("EX_METADATA_TRANSACTION_ID")) {
+    metaDataMap.put(
+        "EX_METADATA_TRANSACTION_ID",
+        EOSTSFThreadLocal.getThreadAflacTransactionID()
+    );
+}
+
+Meaning:
+
+Your MQ does NOT send EX_METADATA_TRANSACTION_ID
+
+EOSTSF generates it internally
+
+Value comes from:
+
+
+UUID.randomUUID().toString()
+
+(stored in ThreadLocal at start of process)
+
+
+---
+
+7. Metadata Sent to FileNet (Final Form)
+
+Original metadata (from MQ):
+
+DocType = Invoice
+DocID = 12345
+Date = 2024-05-01
+
+After EOSTSF enrichment:
+
+DocType = Invoice
+DocID = 12345
+Date = 2024-05-01
+EX_METADATA_TRANSACTION_ID = 9f6d8c1e-4c5d-4d8e-bbc1-8a3b7f9e1a2c
+
+✔ This enriched metadata is:
+
+NOT written back to file
+
+ONLY sent to FileNet
+
+Used for Mongo logging and SF MQ correlation
+
+
+
+---
+
+8. Why This Design Makes Sense
+
+Reason	Explanation
+
+MQ remains unchanged	Mainframe MQ payload format is preserved
+Transaction tracing	Each run gets unique transaction ID
+FileNet correlation	Stored as property in FileNet
+SF MQ consistency	Same transaction ID reused
+Replay safe	Metadata file stays clean
+
+
+
+---
+
+9. Final Correct Understanding (You Can Paste This)
+
+> In EOSTSF, MQ does not send EX_METADATA_TRANSACTION_ID.
+The MQ payload contains only business metadata and document data.
+After removing the MQ header and converting EBCDIC to String, the payload is split using the configured metadata delimiter.
+The first part is treated as metadata and written to a metadata text file, and the second part is treated as binary document data and written as a PDF/TIFF file.
+
+During FileNet upload, EOSTSF reads the metadata file and converts it into a key-value map. If EX_METADATA_TRANSACTION_ID is not present, the service generates a unique transaction ID and injects it into the metadata programmatically.
+
+This enriched metadata is sent to FileNet and reused for MongoDB logging and SF MQ message correlation, while the original metadata file remains unchanged.
+
+
+
+
+---
+
+10. One-Line Summary (Very Important)
+
+EX_METADATA_TRANSACTION_ID is an internal EOSTSF-generated field — not part of MQ metadata.
+
+
+---
+
+If you want next:
+
+I can give you exact pseudo-code block for metadata extraction
+
+Or a sequence diagram only for MQ → Metadata → FileNet → SF MQ
+
+Or help you rewrite this into architecture review language
+
+
+Just tell me 👍
+
+
+
+
+EOSTSF — Complete Service Analysis & Input/Output Specification
+
+(Copy-paste ready — use in your PDF / KT document)
+
+
+---
+
+1. Introduction
+
+This document describes the EOSTSF service end-to-end: architecture, runtime flow, inputs, outputs, error handling, security, and operational notes. The analysis is derived from the project code and related utility/config classes. Special emphasis is on the SF MQ message generation and the MongoDB logging that are the main differences vs the reference EIB FileNet Adapter.
+
+Audience: developers, SREs, QA, and on-call engineers who will operate or extend EOSTSF.
+
+
+---
+
+2. Purpose
+
+EOSTSF is a scheduled/async integration service that:
+
+reads documents from IBM MQ (mainframe-style payloads),
+
+writes each MQ message to local files (binary data + metadata),
+
+uploads documents to FileNet (via multipart HTTP calls with SAML/TLS auth),
+
+notifies downstream systems by sending messages to SF MQ,
+
+logs upload metadata and SF MQ messages in MongoDB for audit/tracing,
+
+moves processed files to processed/ or on failure to error/,
+
+sends email alerts on exceptions.
+
+
+Key guarantee: either each document pair is fully processed (FileNet + SF MQ + Mongo logs) and moved to processed/, or the run is preserved in error/ for replay/inspection.
+
+
+---
+
+3. High-Level Architecture
+
+Scheduler/Async: triggers EOSTSFServiceImpl.processTask().
+
+Configuration DAO (Mongo): loads runtime config (EOSTSFConfiguration) from MongoDB.
+
+MQ Reader: EOSTSFMQFileReaderUtil reads MQ and writes files (EOSTSFFileIOUtil).
+
+Uploader: EOSTSFFileNetUploadUtil prepares metadata, obtains SAML token (EOSTSFSAMLTokenService), calls FileNet via EOSTSFHTTPClient.
+
+SF MQ Sender: MQClient.sendMsgToSFMQ() sends JSON message to SF MQ.
+
+Persistence: EOSTSFFileUploadIDLogRepository & EOSTSFSFUploadIDLogRepository persist logs to MongoDB.
+
+Utilities: EOSTSFUtil (encrypt/decrypt, headers), EOSTSFThreadLocal (per-run context), EOSTSFEmailClient (alerts).
+
+Security: certificate management classes for mutual TLS (EOSTSFFilteredCertificateManager, EOSTSFFilteredKeyManager).
+
+
+
+---
+
+4. Key Components (short)
+
+EOSTSFServiceImpl — orchestrator (creates thread workspace, calls read/upload, cleanup)
+
+EOSTSFMQFileReaderUtil — MQ → files (handles MQ encoding, pooling)
+
+EOSTSFFileIOUtil — create PDF/TIFF and metadata .txt files
+
+EOSTSFFileNetUploadUtil — build metadata model, call FileNet, process callback, move files, trigger SF MQ send, log to Mongo
+
+EOSTSFHTTPClient — HTTP client supporting Basic and mutual-TLS
+
+EOSTSFSAMLTokenService — cached SAML token acquisition
+
+MQClient — sends messages to SF MQ
+
+Mongo repositories — persist exceptions, file upload IDs, SF MQ messages
+
+
+
+---
+
+5. Directory & Naming Conventions
+
+Per run an identity is generated:
+
+identity = <containerID>_yyyy-MM-dd_HH-mm-ss.SSS
+
+Base file layout:
+
+<baseFilePath>/
+  <identity>/
+    unprocessed/
+      data/         -> binary files (.pdf or .tif)
+      metadata/     -> metadata files (.txt)
+    processed/
+      data/
+      metadata/
+  error/
+    <identity>/     -> moved on failures
+
+File naming (example):
+
+Data file: _container123_2026-01-06_13-15-22.123_0_.pdf
+
+Metadata file: _container123_2026-01-06_13-15-22.123_0_.txt
+
+
+
+---
+
+6. End-to-End Runtime Flow (detailed step-by-step)
+
+1. Trigger
+
+Scheduler or external trigger calls EOSTSFServiceImpl.processTask().
+
+
+
+2. Prepare context
+
+Generate identity.
+
+Set ThreadLocal:
+
+threadAflacTransactionID = UUID
+
+threadIdentity = identity
+
+
+
+
+3. Load configuration
+
+EOSTSFConfiguration fetched from DB via EOSTSFConfigurationDAO.findByKey(key).
+
+Validate essential entries: MQ connection details, FileNet adapter, SAML config, SF MQ connection details, baseFilePath.
+
+
+
+4. Build per-run directories
+
+Build unprocessed, processed, error paths and set into configuration.
+
+
+
+5. Read MQ messages → create files
+
+Acquire MQ connection from EOSTSFMQQueuePool.
+
+Loop while mqQueue.getCurrentDepth() > 0 and i < maxFilePerThread:
+
+getMessageFromQueue(...) reads MQ message bytes (uses MQ options: NO_WAIT, CONVERT; sets encoding/charset).
+
+Remove header bytes (first 32).
+
+Extract metadata part (EBCDIC), convert: new String(payload, "ibm500"|"ibm588").
+
+Split metadata string by configured delimiter into metaDataStringArray.
+
+Create binary file (.dat -> rename to .pdf/.tif) in unprocessed/data/.
+
+Write metadata text file in unprocessed/metadata/.
+
+Set ThreadLocal threadDataFileName, threadMetadataFileName, threadDataFileContentType, threadMetadataFileContent.
+
+
+
+
+6. If no files, delete per-run directory and exit.
+
+
+7. If files exist → upload to FileNet
+
+Validate data & metadata counts match.
+
+Build name→File maps.
+
+For each pair:
+
+getMetaDataMap(metadataFile, fileType) → parse metadata key↔value into metaDataMap.
+
+processMetadata(metaDataMap, filenetHttpAdapter.getMetaDataFilter()) → FileNet Metadata model.
+
+Ensure EX_METADATA_TRANSACTION_ID exists; if not set to threadAflacTransactionID.
+
+Decrypt Service Account password: EOSTSFUtil.decrypt(sac.getPassword()).
+
+Get SAML credentials via EOSTSFSAMLTokenService.getCredentials(sac, samlHttpAdapter, ttl).
+
+Build HTTP headers with static headers and add:
+
+Aflac-TransactionID
+
+"Credentials": <SAML JSON>
+
+
+Build multipart payload:
+
+file → FileSystemResource(unprocessedDataFile)
+
+metadata → gson.toJson(metadata)
+
+
+Call EOSTSFHTTPClient.executeHttpPost(multiValueMap, headerMap, filenetHttpAdapter).
+
+Parse JSON response into FileNetResponse.
+
+If EX_METADATA_CALLBACK_URL exists, POST callback payload (getPayloadForCallBack) to callback adapter.
+
+Persist EOSTSFFileUploadIDLog (documentId, corrTransactionID, corrSubTransactionID) to Mongo.
+
+Build SF MQ message (EOSTSFMQSendVO) with docType, caseNumber, fileNetGUID.
+
+mqClient.sendMsgToSFMQ(configuration, sfmqmsg) — send message to SF MQ.
+
+Persist SF MQ message log to Mongo (EOSTSFSFUploadIDLog).
+
+Move unprocessed files → processed/ (rename).
+
+
+
+
+8. Post-upload validation
+
+If any unprocessed files remain → treat as failure: throw EOSTSFException to trigger failure path.
+
+
+
+9. Cleanup / Success
+
+On success: deleteFilesAndDirectory(threadBaseFileDirectory) remove per-run directory.
+
+
+
+10. Failure path
+
+Catch exceptions: create EOSTSFExceptionLog with stacktrace; persist to Mongo & send email via EOSTSFEmailClient.
+
+Attempt moveFilesToErrorDirectory(errorFilePath, threadBaseFileDirectory).
+
+Rethrow EOSTSFException up to scheduler / orchestrator.
+
+
+
+11. ThreadLocal cleanup (recommended)
+
+Clear ThreadLocal values in finally (important to prevent data retention between pooled threads).
+
+
+
+
+
+---
+
+7. INPUT SPECIFICATION (exact items and examples)
+
+7.1 MQ Message (raw payload)
+
+Overall structure (byte array):
+
+[HEADER (first 32 bytes)] [METADATA] [FILEDATA]
+
+Header: protocol/MQ specific info — removed by app.
+
+METADATA: EBCDIC encoded string (example after EBCDIC→String conversion):
+
+, DocType, Invoice; DocID, 12345; Date, 2024-05-01; EX_METADATA_CALLBACK_URL, https://callback.example.com; EX_METADATA_TRANSACTION_ID, 54321
+
+FILEDATA: Binary representation of PDF/TIFF.
+
+
+Example (metadata string after decode and split):
+
+"DocType,Invoice;DocID,12345;Date,2024-05-01;EX_METADATA_CALLBACK_URL,https://example.com/callback;EX_METADATA_TRANSACTION_ID,12345"
+
+7.2 Configuration (EOSTSFConfiguration) — (from Mongo)
+
+Important fields:
+
+mqAdapter:
+
+mqConnectionDetails (host, port, channel, queueManager, queueName, username)
+
+baseFilePath, threadBaseFilePath, unprocessedDataFilePath, unprocessedMetadataFilePath, processedDataFilePath, processedMetadataFilePath, errorFilePath
+
+fileType (PDF or TIFF)
+
+maxFilePerThread
+
+metaDataSplitter (delimiter)
+
+
+fileNetHttpAdapter and samlHttpAdapter:
+
+httpConnection.endpointURL
+
+httpConnection.authenticationScheme (MUTUAL or BASIC)
+
+httpHeaders (List<Parameter> with type STATIC)
+
+metaDataFilter (include/exclude rules)
+
+
+transaction.serviceAccountCredentials:
+
+username (may contain domain)
+
+password (encrypted)
+
+saml_TTL (milliseconds)
+
+
+sfMqConnectionDetails:
+
+mqHostName, mqPort, mqChannelName, mqManagerName, mqQueueName
+
+
+callbackHttpAdapter (optional)
+
+emailTrigger (recipients, smtpHost, smtpPort, subject)
+
+
+7.3 Environment variables / app settings
+
+EOSTSFApplication.key — configuration key used to fetch config
+
+EOSTSFApplication.containerID — container identifier used in identity
+
+Email user & password may be read from EOSTSFApplication.emailUser and EOSTSFApplication.emailPassword (or configuration).
+
+
+
+---
+
+8. OUTPUT SPECIFICATION (exact items and examples)
+
+8.1 FileNet POST (multipart request)
+
+Multipart parts:
+
+file — binary document (pdf / tif) as FileSystemResource
+
+metadata — JSON string of FileNet Metadata model (document object store, class, title, properties)
+
+
+Sample Metadata JSON (simplified):
+
+{
+  "document": {
+    "objectStore": "ACC",
+    "documentClass": "GRP_CLAIMS_CUSTOMER",
+    "title": "GP-16914.PLAN-28532_2026-01-06_13-15-22.123",
+    "contentType": "application/pdf",
+    "properties": {
+      "DocType": "Invoice",
+      "DocID": "12345",
+      "Date": "2024-05-01",
+      "EX_METADATA_TRANSACTION_ID": "12345"
+    }
+  }
+}
+
+Example FileNet Response (returned and parsed):
+
+{
+  "Document": {
+    "DocumentID": "{9170389C-C123-40AC-9809-025EDC7BBEF1}",
+    "Title": "..."
+  }
+}
+
+8.2 SF MQ message (sent to SF MQ)
+
+Sent after successful FileNet upload.
+
+Payload: JSON string with top-level DCRequest containing EOSTSFMQSendVO.
+
+Fields:
+
+docType
+
+caseNumber
+
+fileNetGUID (from FileNetResponse)
+
+(optional) other metadata fields
+
+
+
+Sample SF MQ message:
+
+{
+  "DCRequest": {
+    "docType": "Invoice",
+    "caseNumber": "PLAN-28532",
+    "fileNetGUID": "{9170389C-C123-40AC-9809-025EDC7BBEF1}"
+  }
+}
+
+8.3 MongoDB entries (audit / persistence)
+
+EOSTSFFileUploadIDLog (on each FileNet success)
+
+{
+  "_id": "...",
+  "documentId": "{...}",               // FileNet GUID
+  "corrTransactionID": "12345",       // EX_METADATA_TRANSACTION_ID
+  "corrSubTransactionID": "..."       // optional
+  "timestamp": ISODate("2026-01-06T13:15:22Z")
+}
+
+EOSTSFSFUploadIDLog (storing SF MQ message)
+
+{
+  "_id": "...",
+  "msg": "{\"DCRequest\":{...}}",     // Sent SF MQ JSON as string
+  "transactionID": "12345",
+  "timestamp": ISODate("2026-01-06T13:15:22Z")
+}
+
+EOSTSFExceptionLog (on errors)
+
+{
+  "_id": "...",
+  "exceptionMessage": "java.lang.RuntimeException: ...",
+  "exceptionStackTrace": "long stacktrace string",
+  "threadIdentity": "container123_2026-01-06_13-15-22.123",
+  "timestamp": ISODate("2026-01-06T13:15:22Z")
+}
+
+
+8.4 File system outputs
+
+On success:
+
+Data and metadata moved to .../processed/data/ and .../processed/metadata/.
+
+
+On failure:
+
+Whole run directory moved to .../error/<identity>/.
+
+
+
+
+---
+
+9. Error Handling & Recovery
+
+Primary behaviours:
+
+All runtime exceptions are:
+
+Logged via LoggingHelperUtil.logError
+
+Persisted as EOSTSFExceptionLog in Mongo
+
+Email alert sent via EOSTSFEmailClient
+
+
+On upload failures:
+
+Attempt to move the per-run directory into error/
+
+Do not delete original files (preserve for replay)
+
+
+MQ read failures:
+
+Connection returned to pool appropriately; exceptions logged and saved.
+
+
+SF MQ send failures:
+
+Currently MQClient.sendMsgToSFMQ logs error but may return success incorrectly — fix suggested (propagate failure).
+
+
+Recommended replay:
+
+Inspect error/<identity>/unprocessed/, correct root cause, then re-process via controlled replay utility (or manual process invocation pointing to that folder).
+
+
+
+
+---
+
+10. Security & Authentication
+
+Credentials:
+
+Service account credentials are stored encrypted in config; decrypted at runtime using EOSTSFUtil.decrypt().
+
+Important: Replace hardcoded AES key with secure keystore / vault.
+
+
+SAML:
+
+EOSTSFSAMLTokenService obtains SAML tokens and caches them up to saml_TTL. Token generation is synchronized to avoid duplicate requests.
+
+The SAML token JSON is passed to FileNet in header: Credentials: <SAML JSON>.
+
+
+Mutual TLS:
+
+EOSTSFFilteredCertificateManager maintains SSLContext per consumer identity (for multi-cert use cases).
+
+EOSTSFHTTPClient picks client certificate by consumerIdentity and builds a CloseableHttpClient with that SSLContext for mutual-TLS endpoints.
+
+
+Transport:
+
+HTTP calls use TLS. FileNet endpoints typically require mutual TLS; callback URLs may use Basic or mutual TLS depending on config.
+
+
+
+
+---
+
+11. ThreadLocal & Logging (traceability)
+
+ThreadLocal entries correlate logs, DB entries, email alerts:
+
+threadAflacTransactionID (UUID) — main correlation id used as EX_METADATA_TRANSACTION_ID if metadata not present.
+
+threadIdentity — used in filenames and directories.
+
+threadSamlTransactionID — SAML request id for tracing SAML calls.
+
+
+Always include Aflac-TransactionID header in outgoing calls.
+
+Persist documentId and SF MQ message into Mongo for post-mortem and audit.
+
+
+
+---
+
+12. Differences vs EIB FileNet Adapter (summary)
+
+SF MQ notification: EOSTSF sends an additional SF MQ message after FileNet upload; EIB example did not.
+
+MongoDB logging of SF MQ messages: EOSTSF persists the actual SF MQ message and FileNet GUIDs in Mongo for audit.
+
+ThreadLocal usage: EOSTSF relies heavily on ThreadLocal for transaction tracing and filename generation.
+
+Error handling emphasis: EOSTSF preserves run artifacts and emails on failure. Same as EIB but EOSTSF additionally ensures SF MQ and Mongo logging are completed or logged as failed.
+
+Mutual TLS and per-consumer SSLContext: EOSTSF supports multiple certificate contexts via EOSTSFFilteredCertificateManager.
+
+SAML caching: EOSTSF caches SAML tokens for TTL and synchronizes refresh.
+
+
+
+---
+
+13. Operational Runbook (quick)
+
+When alert/email arrives:
+
+1. Note threadIdentity / AflacTransactionID from email subject or exception log.
+
+
+2. Check logs for that ID.
+
+
+3. Inspect error/<threadIdentity>/ for files.
+
+
+4. Check Mongo:
+
+EOSTSFExceptionLog for stacktrace.
+
+EOSTSFFileUploadIDLog and EOSTSFSFUploadIDLog for partial success.
+
+
+
+5. If FileNet success but SF MQ failed:
+
+Inspect EOSTSFSFUploadIDLog and SF MQ server queues.
+
+Re-send SF MQ message manually if safe (avoid duplicate business side effects).
+
+
+
+6. Disk / Permissions:
+
+Verify base path accessible and enough disk space.
+
+
+
+7. SAML token failure:
+
+Call SAML endpoint manually using decrypted credentials to validate.
+
+
+
+8. For replay:
+
+Move error/<identity>/unprocessed/* back to a safe replay directory and invoke a controlled processFileUploads() (or run a replay script).
+
+
+
+
+
+---
+
+14. Known Code Issues & Recommended Fixes (priority)
+
+P0 (urgent):
+
+Fix MQClient.sendMsgToSFMQ to propagate failure (do not return "success" on exception).
+
+Use EOSTSFMQQueuePool / pooling for MQ sends instead of creating new connection per send.
+
+Replace hardcoded AES key with secure vault/keystore; move to AES-GCM with IV.
+
+Ensure ThreadLocal values are removed in finally in processTask().
+
+
+P1 (recommended):
+
+Make MQ delivery mode configurable (persistent vs non-persistent).
+
+Add retry/backoff for transient HTTP/SAMl/MQ failures.
+
+Use try-with-resources for streams, HTTP client responses, MQ connections.
+
+Avoid logging decrypted secrets.
+
+
+P2 (nice-to-have):
+
+Add a controlled replay utility for error/ directories.
+
+Add metrics (counters for processed, failed, queue depth; histograms for HTTP latency).
+
+Add tests (unit + integration with MQ/FileNet stubs).
+
+
+
+---
+
+15. Appendix — Example artifacts (copy-paste)
+
+15.1 Example decoded metadata file (unprocessed/metadata/....txt)
+
+DocType,Invoice;DocID,12345;Date,2024-05-01;EX_METADATA_CALLBACK_URL,https://callback.example.com/notify;EX_METADATA_TRANSACTION_ID,12345;EOSTSF_CASENUMBER,PLAN-28532
+
+15.2 Example multipart parts (concept)
+
+file: binary PDF (Content-Disposition: form-data; name="file"; filename="...pdf")
+
+metadata: {"document":{...}} JSON string
+
+
+15.3 Example SF MQ message (string stored in Mongo)
+
+{
+  "DCRequest": {
+    "docType": "Invoice",
+    "caseNumber": "PLAN-28532",
+    "fileNetGUID": "{9170389C-C123-40AC-9809-025EDC7BBEF1}"
+  }
+}
+
+15.4 Example Mongo documents
+
+EOSTSFFileUploadIDLog
+
+{ "documentId": "{9170389C...}", "corrTransactionID": "12345", "timestamp": "2026-01-06T13:15:22Z" }
+
+EOSTSFSFUploadIDLog
+
+{ "msg": "{\"DCRequest\":{...}}", "transactionID": "12345", "timestamp":"2026-01-06T13:15:22Z" }
+
+
+---
+
+16. How to include this in your PDF
+
+Copy the sections you need into Word / Google Docs.
+
+Use code blocks for JSON examples (monospaced font).
+
+Add a small sequence diagram (Mermaid or simple boxes) for the flow if desired.
+
+Add an appendix with exact config key names (from your EOSTSFConfiguration model) if PDF audience needs exact fields.
+
+
+
+---
+
+17. Final notes
+
+This document is generated from the code analysis and the EIB FileNet reference you provided — it includes the EOSTSF-specific features requested: SF MQ message creation and MongoDB logging of SF MQ messages and FileNet GUIDs.
+
+If you want, I can:
+
+Convert this content into a formatted Word or PDF file for direct download, or
+
+Produce a Mermaid sequence diagram and a one-page summary slide for presentations.
+
+
+
+Tell me which extra artifact you want (PDF generation now, Mermaid diagram, or a replay script) and I’ll produce it immediately.

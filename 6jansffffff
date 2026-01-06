@@ -1408,3 +1408,298 @@ Produce a Mermaid sequence diagram and a one-page summary slide for presentation
 
 
 Tell me which extra artifact you want (PDF generation now, Mermaid diagram, or a replay script) and I’ll produce it immediately.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Below is a clean, detailed, SF MQ section only, written in documentation style, with clear inputs and outputs, and aligned to your code and architecture.
+You can directly copy-paste this into your PDF.
+
+
+---
+
+SF MQ Integration – Detailed Flow with Input and Output
+
+
+---
+
+Purpose of SF MQ Integration
+
+The SF MQ integration in the EOSTSF application is used to notify downstream SF systems after a document has been successfully processed and uploaded to FileNet.
+
+This message acts as a confirmation and handoff containing key business identifiers and the FileNet reference ID, allowing SF systems to continue their workflow without reprocessing the document.
+
+
+---
+
+When SF MQ Message Is Triggered
+
+An SF MQ message is sent only after:
+
+1. The MQ message has been successfully read and processed
+
+
+2. The document file has been uploaded to FileNet successfully
+
+
+3. FileNet returns a valid Document GUID
+
+
+4. No exception occurs during processing
+
+
+
+If any of the above steps fail:
+
+SF MQ message is NOT sent
+
+Error details are logged to MongoDB
+
+Files are moved to the error directory
+
+
+
+---
+
+SF MQ Message Input (Application Side)
+
+Source of Input Data
+
+The SF MQ message is constructed using data from multiple internal sources, not directly from the original MQ payload.
+
+Field	Source
+
+docType	Extracted from MQ metadata
+caseNumber	Extracted from MQ metadata
+fileNetGUID	Returned by FileNet upload response
+
+
+
+---
+
+Input Breakdown
+
+1. Metadata from MQ Message
+
+Extracted earlier during metadata parsing:
+
+{
+  "DocType": "Invoice",
+  "CaseNumber": "PLAN-28532"
+}
+
+2. FileNet Upload Response
+
+Returned by FileNet after successful upload:
+
+{9170389C-C123-40AC-9809-025EDC7BBEF1}
+
+
+---
+
+SF MQ Message Payload Structure (Output)
+
+The application builds a JSON-based TextMessage before sending it to SF MQ.
+
+Final Message Sent to SF MQ
+
+{
+  "DCRequest": {
+    "docType": "Invoice",
+    "caseNumber": "PLAN-28532",
+    "fileNetGUID": "{9170389C-C123-40AC-9809-025EDC7BBEF1}"
+  }
+}
+
+
+---
+
+SF MQ Message Creation Logic
+
+Message Construction
+
+1. Create a JSON object (DCRequest)
+
+
+2. Populate fields using processed data
+
+
+3. Convert JSON to String
+
+
+4. Send as MQ TextMessage
+
+
+
+
+---
+
+MQ Connection Details (Runtime Input)
+
+SF MQ connection details are dynamically loaded from MongoDB:
+
+Parameter	Source
+
+MQ Host	SFMQConnectionDetails.mqHostName
+MQ Port	SFMQConnectionDetails.mqPort
+Channel	SFMQConnectionDetails.mqChannelName
+Queue Manager	SFMQConnectionDetails.mqManagerName
+Queue Name	SFMQConnectionDetails.mqQueueName
+
+
+No credentials are required (VID-based access).
+
+
+---
+
+MQClient Processing Flow
+
+Code Path
+
+MQClient.sendMsgToSFMQ(configuration, message)
+
+Internally calls:
+
+sendMsg(String msg, Map<String, String> queueDetails)
+
+
+---
+
+Step-by-Step Execution
+
+1. Create MQQueueConnectionFactory
+
+
+2. Set connection parameters (host, port, channel, manager)
+
+
+3. Create MQ connection
+
+
+4. Open session (AUTO_ACKNOWLEDGE)
+
+
+5. Create queue sender
+
+
+6. Create TextMessage with JSON payload
+
+
+7. Send message using NON_PERSISTENT delivery mode
+
+
+8. Close MQ connection
+
+
+
+
+---
+
+SF MQ Output
+
+Successful Outcome
+
+Output Type	Description
+
+MQ Message	Successfully posted to SF MQ queue
+Response	"success"
+Logging	Success log entry written
+
+
+
+---
+
+Failure Outcome
+
+If any exception occurs during MQ publishing:
+
+Behavior	Description
+
+MQ Message	Not delivered
+MongoDB	Error logged with transaction ID
+Email	Failure notification triggered
+File State	Files already processed remain unchanged
+
+
+
+---
+
+SF MQ Input vs Output Summary
+
+Inputs
+
+Source	Description
+
+MQ Metadata	docType, caseNumber
+FileNet	fileNetGUID
+MongoDB	SF MQ connection config
+
+
+
+---
+
+Output
+
+Target	Data
+
+SF MQ	JSON TextMessage (DCRequest)
+
+
+
+---
+
+Key Design Characteristics
+
+SF MQ message is decoupled from original MQ input
+
+Message is sent only on successful FileNet upload
+
+JSON payload is lightweight and business-focused
+
+No file data is transmitted to SF MQ
+
+Guarantees downstream systems receive FileNet reference only
+
+
+
+---
+
+One-Line Summary
+
+EOSTSF sends a structured JSON notification to SF MQ containing business identifiers and the FileNet document GUID, enabling downstream SF systems to continue processing without re-reading the original document.
+
+
+---
+
+If you want, I can also:
+
+Add error scenarios diagram
+
+Add SF MQ retry strategy section
+
+Rewrite this in executive / architecture review language
+
+
+Just tell me 👍

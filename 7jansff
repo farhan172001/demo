@@ -1,0 +1,433 @@
+Below is a clean, structured, copy-paste–ready section that documents the application flow from start → up to FileNet upload, with Inputs and Outputs for each step. It uses the exact behavior from our code and is formatted for inclusion in your PDF/KT.
+
+
+---
+
+Flow: Start → FileNet Upload (Organized with Input / Output)
+
+
+---
+
+1. Trigger & Job Context
+
+What happens
+
+Scheduler/async triggers EOSTSFServiceImpl.processTask() for a run.
+
+
+Input
+
+Scheduler trigger / manual call
+
+
+Processing
+
+Generate threadIdentity = <containerID>_<timestamp>
+
+Generate threadAflacTransactionID = UUID
+
+Store both in EOSTSFThreadLocal
+
+
+Output
+
+Per-run context values available to all components (ThreadLocal)
+
+
+
+---
+
+2. Load Configuration
+
+What happens
+
+Fetch runtime configuration from Mongo: getConfiguration(key) → EOSTSFConfiguration.
+
+
+Input
+
+EOSTSFApplication.key (config key)
+
+
+Output
+
+EOSTSFConfiguration containing MQ adapter, FileNet/SAML adapters, SF MQ config, base paths, fileType, delimiters, service account creds (encrypted), etc.
+
+
+
+---
+
+3. Prepare Runtime Directories
+
+What happens
+
+Build per-run folder paths and set into configuration:
+
+<base>/<threadIdentity>/unprocessed/{data,metadata}
+<base>/<threadIdentity>/processed/{data,metadata}
+<base>/error/<threadIdentity>/
+
+
+Input
+
+configuration.getMqAdapter().getBaseFilePath() + threadIdentity
+
+
+Output
+
+Directories created on filesystem; paths saved back into configuration.getMqAdapter()
+
+
+
+---
+
+4. Read Messages from IBM MQ
+
+What happens
+
+EOSTSFMQFileReaderUtil.readQueueAndCreateFiles(configuration) reads messages (uses MQ pool).
+
+
+Input
+
+MQ connection details from configuration
+
+MQ queue depth and messages
+
+
+Processing
+
+Acquire MQ connection
+
+While messages and i < maxFilePerThread:
+
+getMessageFromQueue() reads raw byte[] (MQ header + payload)
+
+Set/clear ThreadLocal placeholders for each message
+
+
+
+Output
+
+For each message: raw bytes returned to file-processing step
+
+
+
+---
+
+5. Create Local Files (temporary)
+
+What happens
+
+EOSTSFFileIOUtil.generatePDFFile() or generateTIFFile():
+
+Strip MQ header (first 32 bytes)
+
+Convert remaining bytes to String for metadata (EBCDIC charset)
+
+Split by configured delimiter into metadata string and file bytes
+
+Write binary bytes to a temporary .dat file → rename to .pdf/.tif
+
+Write metadata string to .txt in unprocessed/metadata/
+
+Set threadDataFileName, threadMetadataFileName, threadDataFileContentType in ThreadLocal
+
+
+
+Input
+
+byte[] from MQ read
+
+configuration.getMqAdapter().getMetaDataSplitter()
+
+
+Output
+
+unprocessed/data/<file>.pdf (or .tif)
+
+unprocessed/metadata/<file>.txt
+
+ThreadLocal filenames and content-type for later steps
+
+
+
+---
+
+6. Validate Pairs
+
+What happens
+
+EOSTSFFileNetUploadUtil.uploadFiles() lists unprocessed data & metadata and verifies counts match.
+
+
+Input
+
+Files under unprocessed/data/ and unprocessed/metadata/
+
+
+Output
+
+If counts match → proceed
+
+If mismatch → throw EOSTSFException → enter failure path
+
+
+
+---
+
+7. Parse Metadata File
+
+What happens
+
+getMetaDataMap(unprocessedMetadataFile, fileType):
+
+Reads txt content
+
+Splits key,value;key,value;... into HashMap<String,String>
+
+Auto-adds content type/title if missing
+
+
+
+Input
+
+unprocessed/metadata/<file>.txt (plain metadata string)
+
+
+Output
+
+metaDataMap (Map of metadata keys → values)
+
+
+
+---
+
+8. Enrich Metadata (Transaction ID)
+
+What happens
+
+Before upload, ensure transaction correlation:
+
+If metaDataMap lacks EX_METADATA_TRANSACTION_ID, set it to threadAflacTransactionID (ThreadLocal).
+
+
+
+Input
+
+metaDataMap
+
+EOSTSFThreadLocal.threadAflacTransactionID
+
+
+Output
+
+Enriched metaDataMap with EX_METADATA_TRANSACTION_ID (if originally absent)
+
+
+
+---
+
+9. Prepare FileNet Metadata Model
+
+What happens
+
+processMetadata(metaDataMap, filenetHttpAdapter.getMetaDataFilter()) builds Metadata object:
+
+document.objectStore, document.class, title, contentType
+
+properties array from map and static params per config
+
+
+
+Input
+
+metaDataMap
+
+filenetHttpAdapter.metaDataFilter (include/exclude rules)
+
+
+Output
+
+Metadata JSON-ready model for FileNet
+
+
+
+---
+
+10. Obtain Credentials / SAML Token
+
+What happens
+
+Decrypt service account password: EOSTSFUtil.decrypt(sac.getPassword())
+
+EOSTSFSAMLTokenService.getCredentials(sac, samlHttpAdapter, ttl) returns cached SAML credentials (refresh if TTL expired). threadSamlTransactionID set in ThreadLocal.
+
+
+Input
+
+Encrypted SAC from configuration.transaction.serviceAccountCredentials
+
+samlHttpAdapter from config
+
+
+Output
+
+SAML credentials JSON (used in header "Credentials": <json>)
+
+
+
+---
+
+11. Build HTTP Multipart Payload
+
+What happens
+
+Build headers: EOSTSFUtil.getHttpHeaderMap(filenetHttpAdapter.getHttpHeaders())
+
+Add AFLAC_TRANSACTION_ID header
+
+Add Credentials header (SAML JSON)
+
+Build MultiValueMap:
+
+"file" → FileSystemResource(unprocessedDataFile)
+
+"metadata" → gson.toJson(metadata)
+
+
+
+Input
+
+Local file path (unprocessed/data/<file>.pdf)
+
+Metadata object
+
+Headers + SAML token
+
+
+Output
+
+Prepared multipart payload and headers ready for HTTP POST
+
+
+
+---
+
+12. HTTP Multipart POST to FileNet
+
+What happens
+
+EOSTSFHTTPClient.executeHttpPost(multiValueMap, headerMap, filenetHttpAdapter):
+
+Uses REST/Apache client
+
+Supports Basic or Mutual-TLS (select SSLContext by consumerIdentity)
+
+Posts multipart to FileNet endpoint
+
+
+
+Input
+
+Multipart payload (file + metadata)
+
+Header map (including SAML)
+
+FileNet endpoint from filenetHttpAdapter
+
+
+Output
+
+FileNetResponse (parsed JSON)
+
+includes Document.DocumentID (FileNet GUID)
+
+
+Success or HTTP exception (propagated)
+
+
+
+---
+
+13. Post-upload Actions (on success)
+
+What happens
+
+Persist file upload ID:
+
+Create EOSTSFFileUploadIDLog with documentId and correlation IDs → save to Mongo (eisfnaFileUploadIDLogRepository.save(...))
+
+
+Move files:
+
+unprocessed/data/<file> → processed/data/
+
+unprocessed/metadata/<file> → processed/metadata/
+
+
+
+Input
+
+fileNetResponse.getDocument().getDocumentID()
+
+metaDataMap
+
+
+Output
+
+Mongo log record for FileNet upload
+
+Files in processed/ folder
+
+FileNet GUID available for further use (SF MQ / audit)
+
+
+
+---
+
+14. Failure Handling (brief)
+
+What happens
+
+On any exception during upload:
+
+Create EOSTSFExceptionLog with message + stacktrace → save to Mongo
+
+Send alert email via EOSTSFEmailClient
+
+Attempt moveFilesToErrorDirectory(errorFilePath, threadBaseFileDirectory)
+
+Rethrow EOSTSFException up to processTask()
+
+
+
+Input
+
+Exception object
+
+
+Output
+
+Mongo exception log
+
+Files moved to error/<threadIdentity>/
+
+Email notification
+
+
+
+---
+
+One-line recap
+
+Read MQ → extract metadata & write local file → enrich metadata with transaction ID → build FileNet metadata + SAML auth → multipart POST (file + metadata) → receive FileNet GUID → persist upload ID in Mongo and move files to processed.
+
+
+---
+
+You can paste this section into your document. If you want, I can now:
+
+Add the SF MQ & MongoDB parts right after this (already prepared), or
+
+Produce a single-page flow diagram (text/mermaid) for inclusion. Which would you like?

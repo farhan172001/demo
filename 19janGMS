@@ -1,0 +1,502 @@
+Summary (one-liner)
+
+This API (GET /claim-systems) accepts a source, sourceIdType, and sourceId, validates them, searches the Neptune graph for matching SRK nodes, verifies the correct System Of Record (SOR), walks up the graph to find the Claim Aggregation and Claim Submission, and returns a single GetClaimSystemsResponse with the resolved claim-system chain — or 404 if nothing valid is found.
+
+High-level flow
+
+1. Controller receives request with source, sourceIdType, sourceId.
+
+
+2. Convert source and sourceIdType into enums.
+
+
+3. Call service getClaimSystems(source, sourceIdType, sourceId).
+
+
+4. Service queries Neptune for SRK nodes that match sourceId.
+
+
+5. For each SRK found:
+
+Construct a typed SRK identifier object and determine expected SOR.
+
+Check SRK’s actual SOR(s) — skip if not matching expected SOR.
+
+If matching, traverse to parent Claim Aggregation and then to parent Universal Claim Submission.
+
+Build GetClaimSystemsResponse and return it.
+
+
+
+6. If no valid SRK/SOR match → return 404 (Claim system not found).
+
+
+
+Step-by-step explanation (simple, complete, concise)
+
+1) Controller / endpoint
+
+Endpoint: GET /claim-systems with query params:
+
+source (string) → e.g., name of upstream system
+
+sourceIdType (string) → type of the ID (policy, claim number, etc.)
+
+sourceId (string) → the actual identifier to resolve
+
+
+Controller converts source and sourceIdType into Source and SourceIDType enums, then calls claimService.getClaimSystems(...).
+
+If service returns null → controller returns 404 Not Found with message "Claim system not found".
+
+If service returns a response → controller returns 200 OK with GetClaimSystemsResponse.
+
+
+2) Service entry — getClaimSystems(...)
+
+Purpose: given the source context and sourceId, find the claim system chain (SRK → Claim Aggregation → Claim Submission).
+
+First action: neptuneService.getSRKsWithMatchingSourceId(sourceId) — runs a parameterized Neptune query that finds SRK vertices where the ordered key values equal the sourceId.
+
+If no SRKs found → log error and return null.
+
+
+
+3) For each SRK found: create typed identifier
+
+Create GmsIdentifierSystemOfRecordKey from the SRK vertex id (this class validates format/domain).
+
+Compute expectedSOR = SystemOfRecord.determineSystemOfRecord(source, sourceIdType).
+This is the SOR that should own this ID given the incoming source and sourceIdType.
+
+
+4) Validate SRK’s SOR(s)
+
+Call getMatchingSOR(gmsIdentifierSRK, expectedSOR):
+
+It fetches related OF_SOR vertices for the SRK.
+
+Filters to find one whose CODE maps to the expectedSOR.
+
+Outcomes:
+
+No matching SOR → skip this SRK (log info; could be same ID issued by another system).
+
+More than one matching SOR → treat as data inconsistency and throw ApplicationException("Duplicate ID...").
+
+Exactly one → proceed.
+
+
+
+
+5) Graph traversal to parents (when SOR matches)
+
+From SRK, follow HAS_SYSTEM_ID_REVERSE to find the Claim Aggregation (UCAID).
+
+Create GmsIdentifierClaimAggregation (validates domain/prefix/UUID).
+
+
+From Claim Aggregation, follow HAS_CLAIM_AGG_REVERSE to find the Universal Claim Submission (UCSID).
+
+Create GmsIdentifierUniversalClaimSubmission (validates domain/prefix/UUID).
+
+
+Collect required properties from vertices:
+
+universalClaimSubmissionId, universalClaimSubmissionAlias
+
+universalClaimAggregationId
+
+Claim system details: source, sourceId, sourceIdType, id (SRK id)
+
+
+
+6) Build and return GetClaimSystemsResponse
+
+Use builder to populate:
+
+universalClaimSubmissionId
+
+universalClaimSubmissionAlias (from vertex property)
+
+universalClaimAggregationId
+
+claimSystem object containing source metadata and SRK id
+
+
+Return this single response (first valid SRK with matching SOR ends the loop and returns).
+
+
+7) Error handling & logging (important points)
+
+If getSRKsWithMatchingSourceId returns empty → log error and return null → controller returns 404.
+
+If no SRK matches the expected SOR after checking all SRKs → info log, return null → 404.
+
+If more than one SOR matches an SRK → throw ApplicationException (technical) because duplicate SORs for same SRK is a data integrity issue.
+
+If identifier classes (e.g., GmsIdentifierClaimAggregation) detect invalid format/UUID → throw DataFormatException.
+
+Neptune query exceptions are caught and logged; methods often return empty lists on failure as a defensive pattern.
+
+
+8) Neptune queries used (what they do)
+
+getSRKsWithMatchingSourceId(sourceId) runs a Cypher-like query:
+
+MATCH (n:SRK) WHERE n.ORDERED_KEY_VALUES = $sourceId RETURN n
+
+
+findRelatedVertices(id, relationship) used to walk relationships like OF_SOR, HAS_SYSTEM_ID_REVERSE, HAS_CLAIM_AGG_REVERSE.
+
+vertexResultParser.parseVertexResults(...) converts raw JSON results into Map<Object,Object> vertex maps.
+
+
+9) Validation classes & responsibilities
+
+GmsIdentifierSystemOfRecordKey, GmsIdentifierClaimAggregation, GmsIdentifierUniversalClaimSubmission:
+
+Validate domain prefix (ensures correct type of ID).
+
+Extract and validate UUID portion (throw DataFormatException if invalid).
+
+
+SystemOfRecord.determineSystemOfRecord(source, sourceIdType) encapsulates business logic mapping source + id-type → expected SOR.
+
+
+Response model
+
+GetClaimSystemsResponse contains:
+
+universalClaimSubmissionId (String)
+
+universalClaimSubmissionAlias (String)
+
+universalClaimAggregationId (String)
+
+claimSystem (object)
+
+source, sourceId, sourceIdType, id (SRK id)
+
+
+
+
+Key business rules & why they matter
+
+SOR validation: prevents returning a claim owned by a different source system when the same raw ID can be issued by multiple systems.
+
+Strict identifier validation: stops bad inputs and prevents useless graph lookups.
+
+Return-first-valid-SRK: once a matching SRK + correct SOR is found, API returns immediately (design assumes one correct chain per request).
+
+
+Concise checklist for reviewers / manager
+
+Inputs validated and converted to enums.
+
+Neptune searched for SRKs by sourceId.
+
+Each SRK is checked against expected SOR; only exact SOR match is accepted.
+
+Graph traversal retrieves aggregation and submission IDs and alias.
+
+Proper exceptions & logs exist for data integrity issues (duplicate SORs, invalid IDs).
+
+404 returned when no valid resolution is found.
+
+
+
+---
+
+If you want, I can now:
+
+Convert this into one-page slide or Hinglish version, or
+
+Produce a sequence diagram showing the Neptune traversals. Which would you prefer?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Summary (one-liner)
+
+This API (GET /claims/{universalClaimAggregationId}) takes a Universal Claim Aggregation ID, validates it, checks its existence in Neptune, fetches all related source-system claim IDs (SRKs), applies System Of Record (SOR) rules to deduplicate true SORs using the latest update timestamp, and returns a clean list of claim systems — or 404 if the claim does not exist.
+
+
+---
+
+High-level flow
+
+1. Controller receives universalClaimAggregationId as path variable.
+
+
+2. Service validates the ID format and domain.
+
+
+3. Neptune is checked to confirm the vertex exists.
+
+
+4. Service fetches all SRKs linked to the aggregation.
+
+
+5. For each SRK:
+
+Resolve its System Of Record (SOR).
+
+Build a ClaimSystem object.
+
+Deduplicate true SORs by keeping the latest updated record.
+
+
+
+6. Build and return GetClaimSystemsByIdResponse.
+
+
+7. If claim not found → return 404.
+
+
+
+
+---
+
+Step-by-step explanation (simple, complete, concise)
+
+1) Controller / endpoint
+
+Endpoint:
+GET /claims/{universalClaimAggregationId}
+
+Input:
+
+universalClaimAggregationId → canonical ID for Universal Claim Aggregation.
+
+
+Controller calls:
+
+claimService.getClaimSystemsById(universalClaimAggregationId);
+
+If service returns null → 404 Not Found (Claim not found).
+
+If response exists → 200 OK with list of claim systems.
+
+
+
+---
+
+2) Service entry — getClaimSystemsById(String id)
+
+First step is ID validation:
+
+new GmsIdentifierClaimAggregation(universalClaimAggregationId);
+
+This ensures:
+
+Correct domain prefix (UNIVERSAL_CLAIMS_AGGREGATION)
+
+Valid UUID format
+
+
+Invalid ID → DataFormatException (technical error).
+
+
+
+---
+
+3) Check if claim exists in Neptune
+
+neptuneService.vertexWithIdExists(gmsIdentifierClaimAggregation);
+
+What happens internally
+
+Executes query:
+
+MATCH (n {~id: $id})
+RETURN count(n) as count
+
+If count > 0 → claim exists.
+
+If count = 0 → log info and return null.
+
+
+📌 Why this step exists
+Prevents unnecessary graph traversal and ensures clean 404 behavior.
+
+
+---
+
+4) Fetch related system IDs (SRKs)
+
+findRelatedVertices(
+  gmsIdentifierClaimAggregation,
+  Relationship.HAS_SYSTEM_ID
+);
+
+Returns all SRKs linked to this claim aggregation.
+
+Each SRK represents:
+
+One source system’s claim ID.
+
+
+
+
+---
+
+5) Resolve System Of Record (SOR) per SRK
+
+getSystemOfRecord(srkVertex);
+
+Traverses SRK → OF_SOR relationship.
+
+Enforces exactly one SOR per SRK:
+
+If 0 or >1 SOR found → ApplicationException (data issue).
+
+
+Reads SOR code and converts to SystemOfRecord enum.
+
+
+
+---
+
+6) Build ClaimSystem object
+
+For every SRK:
+
+Extract:
+
+Source system name (from SOR)
+
+Source claim ID (ORDERED_KEY_VALUES)
+
+Source ID type (derived from SOR)
+
+Last updated timestamp (UPDATED_DATE)
+
+
+Build:
+
+ClaimSystem {
+  source,
+  sourceId,
+  sourceIdType,
+  lastUpdatedDate
+}
+
+lastUpdatedDate is internal only (@JsonIgnore).
+
+
+
+---
+
+7) True SOR deduplication logic (core business rule)
+
+Some systems are marked as True SOR.
+
+There can be multiple SRKs from the same true source due to updates.
+
+
+Deduplication approach
+
+For each True SOR:
+
+Compare UPDATED_DATE
+
+Keep only the latest record
+
+
+Non-True SORs:
+
+Added directly without deduplication.
+
+
+
+📌 Outcome
+One authoritative claim ID per true source system, no duplicates, no stale data.
+
+
+---
+
+8) Build and return response
+
+GetClaimSystemsByIdResponse.builder()
+  .claims(claimSystems)
+  .build();
+
+Response contains
+
+List of ClaimSystem objects:
+
+source
+
+sourceId
+
+sourceIdType
+
+
+No timestamps exposed to API consumers.
+
+
+
+---
+
+9) Error handling & logging
+
+Invalid aggregation ID → DataFormatException
+
+Claim not found in Neptune → return null → 404
+
+Multiple SORs per SRK → technical ApplicationException
+
+Neptune query failure → error logged, safe fallback
+
+
+
+---
+
+10) Key business rules (why they matter)
+
+Existence check first → clean 404 semantics.
+
+Strict SOR enforcement → protects data integrity.
+
+True SOR deduplication → avoids duplicate and outdated claim IDs.
+
+Hidden internal fields → clean, consumer-friendly API.
+
+
+
+---
+
+One-line takeaway (for manager)
+
+> This API resolves a Universal Claim Aggregation ID into all associated source-system claim IDs by validating the claim, traversing Neptune relationships, enforcing strict System Of Record rules, and returning a deduplicated, authoritative list of claim systems.
+
+
+
+
+---
+
+If you want next:
+
+Same explanation in pure Hinglish
+
+Side-by-side comparison with Code 1
+
+Flow diagram / sequence diagram
+
+
+Just tell me 👍

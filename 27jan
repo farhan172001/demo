@@ -431,3 +431,15 @@ protected void orchestrateEventProcess(Message<String> message) {
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+The library still first checks the Kafka headers for correlation-id (exactly as before). If the header is missing or empty, it now additionally looks inside the payload JSON for the legacy field (kafka-headers → aflac-correlation-id). If the correlation-id is still not found, the library safely generates a new UUID. After resolving the correlation-id, the library continues to set the runtime context and thread-local data in the same way as earlier. With this change, application code no longer needs to handle correlation-id logic for legacy messages.

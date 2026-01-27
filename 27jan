@@ -325,3 +325,109 @@ public abstract class AesMskKafkaTopicConsumer<T>
         return typeRef;
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+private String extractLegacyCorrelationIdFromPayload(String payload) {
+    try {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root = mapper.readTree(payload);
+
+        JsonNode kafkaHeaders = root.get("kafka-headers");
+        if (kafkaHeaders != null) {
+            JsonNode corrNode = kafkaHeaders.get("aflac-correlation-id");
+            if (corrNode != null && !corrNode.isNull()) {
+                String id = corrNode.asText();
+                if (!id.isBlank()) {
+                    return id;
+                }
+            }
+        }
+    } catch (Exception ignored) {
+        // must NOT break processing
+    }
+    return null;
+}
+
+
+
+
+
+
+
+
+
+
+
+protected void orchestrateEventProcess(Message<String> message) {
+
+    try {
+
+        // 🔹 Existing retry behavior (UNCHANGED)
+        if (this.retryStrategy.shouldDefer(message)) {
+            this.defer(message);
+            return;
+        }
+
+        // =====================================================
+        // ✅ UPDATED CORRELATION-ID LOGIC (NEW + LEGACY SAFE)
+        // =====================================================
+
+        String correlationId = null;
+
+        // 1️⃣ Existing behavior: read from Kafka header (UNCHANGED)
+        Object headerValue = message.getHeaders().get("correlation-id");
+        if (headerValue instanceof byte[]) {
+            correlationId = new String((byte[]) headerValue, StandardCharsets.UTF_8);
+        }
+
+        // 2️⃣ NEW: legacy support – read from payload JSON if header missing
+        if (correlationId == null || correlationId.isBlank()) {
+            correlationId = extractLegacyCorrelationIdFromPayload(message.getPayload());
+        }
+
+        // 3️⃣ Safety fallback (optional but recommended)
+        if (correlationId == null || correlationId.isBlank()) {
+            correlationId = UUID.randomUUID().toString();
+        }
+
+        // =====================================================
+        // 🔹 Context setup (UNCHANGED)
+        // =====================================================
+
+        Map<String, Object> newHeadersMap = new HashMap<>(message.getHeaders());
+        newHeadersMap.put("context.runtime.info", this.runtimeInfo);
+        newHeadersMap.put("correlation-id", correlationId);
+
+        MessageHeaders newHeaders = new MessageHeaders(newHeadersMap);
+
+        CustomApplicationContext customApplicationContext = new CustomApplicationContext();
+        customApplicationContext.setContext(newHeaders);
+        ThreadLocalHolder.set(customApplicationContext);
+
+        // 🔹 Existing behavior: unwrap + process
+        this.processMessage(this.unwrapToType(message));
+
+    } catch (Exception e) {
+
+        if (this.retryStrategy.shouldRetry(message, e)) {
+            this.backOff(message, e);
+        } else {
+            this.fail(message, new AesEventualFailureResult(e));
+        }
+    }
+}

@@ -1,0 +1,327 @@
+@Override
+protected String getCorrelationIdFromPayload(EPSKafkaPayload payload) {
+    if (payload.getEpsKafkaHeaders() != null) {
+        return payload.getEpsKafkaHeaders().getAflacCorrelationId();
+    }
+    return null;
+}
+
+
+
+
+
+
+
+
+
+
+package com.aflac.aes.lib.topic.consumer.core.impl;
+
+import com.aflac.aes.lib.context.CustomApplicationContext;
+import com.aflac.aes.lib.context.ThreadLocalHolder;
+import com.aflac.aes.lib.kafka.AesKafkaMessage;
+import com.aflac.aes.lib.kafka.exception.AESTopicSendException;
+import com.aflac.aes.lib.logging.AesKafkaAppLogger;
+import com.aflac.aes.lib.retry.AesConsumerRetryStrategy;
+import com.aflac.aes.lib.retry.AesConsumerRetryStrategyFactory;
+import com.aflac.aes.lib.schema.AesMessageValidationResult;
+import com.aflac.aes.lib.schema.AesSchemaValidationServiceFactory;
+import com.aflac.aes.lib.util.RuntimeInfo;
+import com.aflac.aes.lib.wrapper.GeneralResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.TypeFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageHeaders;
+
+import javax.annotation.PostConstruct;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public abstract class AesMskKafkaTopicConsumer<T>
+        implements AesTopicConsumerInterface<T>, MigrateToAesTopicInterface<T> {
+
+    @Autowired
+    private AesSchemaValidationServiceFactory aecSchemaValidationServiceFactory;
+
+    @Autowired
+    private AesConsumerRetryStrategyFactory retryStrategyFactory;
+
+    @Autowired
+    private RuntimeInfo runtimeInfo;
+
+    protected AesConsumerRetryStrategy retryStrategy;
+    protected String topicName;
+
+    private Class<T> type;
+    private TypeReference<GeneralResponse<T>> typeRef;
+
+    protected boolean shouldValidateConsumedMessagesAfterDeserialization;
+
+    protected AesMskKafkaTopicConsumer(String topicName) {
+        this(topicName, true);
+    }
+
+    protected AesMskKafkaTopicConsumer(
+            String topicName,
+            boolean shouldValidateConsumedMessagesAfterDeserialization) {
+
+        this.topicName = topicName;
+        this.shouldValidateConsumedMessagesAfterDeserialization =
+                shouldValidateConsumedMessagesAfterDeserialization;
+        this.setClassOfType();
+    }
+
+    @PostConstruct
+    public void init() {
+        this.setRetryStrategy(this.topicName);
+    }
+
+    /**
+     * MAIN ORCHESTRATOR
+     */
+    protected void orchestrateEventProcess(Message<String> message) {
+
+        try {
+            if (retryStrategy.shouldDefer(message)) {
+                defer(message);
+                return;
+            }
+
+            // 1️⃣ Payload unwrap
+            T payload = unwrapToType(message);
+
+            // 2️⃣ Resolve correlation-id (header → payload → UUID)
+            String correlationId = resolveCorrelationId(message, payload);
+
+            // 3️⃣ Prepare headers
+            Map<String, Object> headers = new HashMap<>(message.getHeaders());
+            headers.put("correlation-id", correlationId);
+            headers.put("context.runtime.info", runtimeInfo);
+
+            MessageHeaders newHeaders = new MessageHeaders(headers);
+
+            // 4️⃣ Set ThreadLocal Context
+            CustomApplicationContext context = new CustomApplicationContext();
+            context.setContext(newHeaders);
+            ThreadLocalHolder.set(context);
+
+            // 5️⃣ Call business logic
+            processMessage(payload);
+
+        } catch (Exception e) {
+            if (retryStrategy.shouldRetry(message, e)) {
+                backOff(message, e);
+            } else {
+                fail(message, new AesEventualFailureResult(e));
+            }
+        }
+    }
+
+    /**
+     * Resolve correlation-id from:
+     * Header → Payload → UUID
+     */
+    private String resolveCorrelationId(Message<String> message, T payload) {
+
+        Object headerValue = message.getHeaders().get("correlation-id");
+        if (headerValue instanceof byte[]) {
+            return new String((byte[]) headerValue, StandardCharsets.UTF_8);
+        }
+
+        String payloadCorrelationId = getCorrelationIdFromPayload(payload);
+        if (payloadCorrelationId != null && !payloadCorrelationId.isEmpty()) {
+            return payloadCorrelationId;
+        }
+
+        return UUID.randomUUID().toString();
+    }
+
+    /**
+     * Payload-based correlation-id hook.
+     * Consumer can override.
+     */
+    protected String getCorrelationIdFromPayload(T payload) {
+        return null;
+    }
+
+    protected void defer(Message<String> message) {
+        throw new UnsupportedOperationException();
+    }
+
+    protected void backOff(Message<String> message, Exception e) {
+        try {
+            retryStrategy.backOff(message, e);
+        } catch (AESTopicSendException ex) {
+            retryStrategy.fallback(prepareGenericMessageForSerialization(message));
+        }
+    }
+
+    protected void fail(Message<String> message, AesEventualFailureResult e) {
+        try {
+            retryStrategy.fail(message, e);
+            retryStrategy.sendFailEmail(message, e);
+        } catch (AESTopicSendException ex) {
+            retryStrategy.fallback(prepareGenericMessageForSerialization(message));
+            retryStrategy.sendFallbackEmail(message, e);
+        }
+    }
+
+    private AesKafkaMessage prepareGenericMessageForSerialization(Message<String> message) {
+        try {
+            Map<String, String> headerMap =
+                    message.getHeaders().entrySet().stream()
+                            .collect(Collectors.toMap(
+                                    Map.Entry::getKey,
+                                    e -> String.valueOf(e.getValue())
+                            ));
+
+            return AesKafkaMessage.builder()
+                    .kafkaHeaders(headerMap)
+                    .generalResponse(unwrapToGeneralResponse(message))
+                    .build();
+
+        } catch (ApplicationException e) {
+            AesKafkaAppLogger.error(
+                    this.getClass(),
+                    "Failed to convert message. Headers: [{}], Payload: [{}]",
+                    message.getHeaders(),
+                    message.getPayload()
+            );
+            throw new RuntimeException(e);
+        }
+    }
+
+    protected T unwrapToType(Message<String> message) throws ApplicationException {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            GeneralResponse<T> gr =
+                    mapper.readValue(message.getPayload(), typeRef);
+            return gr.getData();
+        } catch (JsonProcessingException e) {
+            Optional<T> legacy = unwrapToTypeFromLegacy(message);
+            if (legacy.isPresent()) {
+                return legacy.get();
+            }
+            throw new ApplicationException(
+                    "Unwrapping to generic type failed",
+                    e,
+                    ExceptionType.TECHNICAL
+            );
+        }
+    }
+
+    private GeneralResponse<T> unwrapToGeneralResponse(Message<String> message)
+            throws ApplicationException {
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(message.getPayload(), typeRef);
+        } catch (JsonProcessingException e) {
+            throw new ApplicationException(
+                    "Unwrapping to GeneralResponse failed",
+                    e,
+                    ExceptionType.TECHNICAL
+            );
+        }
+    }
+
+    protected AesMessageValidationResult validate(Message<String> message)
+            throws ApplicationException {
+
+        return aecSchemaValidationServiceFactory.validate(
+                topicName,
+                unwrapToGeneralResponse(message)
+        );
+    }
+
+    private void setClassOfType() {
+        Type superType = getClass().getGenericSuperclass();
+
+        while (superType != Object.class) {
+            if (superType instanceof ParameterizedType pt) {
+                Type arg = pt.getActualTypeArguments()[0];
+                if (arg instanceof Class<?>) {
+                    this.type = (Class<T>) arg;
+                    break;
+                }
+                superType =
+                        ((Class<?>) pt.getRawType()).getGenericSuperclass();
+            } else if (superType instanceof Class<?>) {
+                superType = ((Class<?>) superType).getGenericSuperclass();
+            }
+        }
+
+        if (type == null) {
+            throw new IllegalArgumentException(
+                    "Unable to determine generic type"
+            );
+        }
+
+        this.typeRef = new TypeReference<>() {
+            @Override
+            public Type getType() {
+                return TypeFactory.defaultInstance()
+                        .constructParametricType(
+                                GeneralResponse.class,
+                                type
+                        );
+            }
+        };
+    }
+
+    public void setRetryStrategy(String topicName) {
+        if (retryStrategy == null) {
+            retryStrategy =
+                    retryStrategyFactory.getAesConsumerRetryStrategy(topicName);
+        }
+    }
+
+    protected String epochToStringUTC(Long epochMillis) {
+        LocalDateTime time =
+                Instant.ofEpochMilli(epochMillis)
+                        .atZone(ZoneId.of("UTC"))
+                        .toLocalDateTime();
+        return time.format(
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
+
+    protected String buildGroupIdSuffix(String awsAccountId, String homeDirectory) {
+
+        if (awsAccountId != null && !awsAccountId.isEmpty()
+                && !awsAccountId.equals("unknownAccountId")) {
+            return "-" + awsAccountId;
+        }
+
+        if (homeDirectory != null && !homeDirectory.isEmpty()
+                && !homeDirectory.equals("unknownHomeDirectory")) {
+            return "-" + homeDirectory
+                    .replace("/", "-")
+                    .replace("\\", "-")
+                    .replace(":", "-");
+        }
+
+        return "";
+    }
+
+    public String getTopicName() {
+        return topicName;
+    }
+
+    public Class<T> getType() {
+        return type;
+    }
+
+    public TypeReference<GeneralResponse<T>> getTypeRef() {
+        return typeRef;
+    }
+}

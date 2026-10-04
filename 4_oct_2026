@@ -1,0 +1,230 @@
+Yes — now I understand exactly what you want. You want the same hierarchy as the Feedback Hub screen, not a generic appraisal template.
+
+Below is the cleaned-up version with correct spelling, the B7/B6L split, all sub-competencies, and a blank “Give your points…” box after each applicable competency. I have not added any of your work contributions.
+
+
+---
+
+1. Delivery & Process
+
+Section Rating:
+☐ Below ☐ Meets Below ☐ Meets ☐ Meets Above ☐ Above
+
+B7 — Delivery Efficiency
+
+Expectation:
+Understands what is needed and delivers assigned components on time and to specification with quality.
+
+Give your points that would substantiate your contribution in Delivery & Process (Optional):
+[ ]
+
+B7 — Process Efficiency
+
+Expectation:
+Follows project processes diligently (e.g., timesheets, Scrum notes, sprint meetings, etc.); self-manages and does not need constant reminders from managers and others.
+
+Give your points that would substantiate your contribution in Delivery & Process (Optional):
+[ ]
+
+B6L — Delivery Execution
+
+Expectation:
+Schedules and tracks the progress of assigned work, providing visibility to the pod and/or team leader (as well as other team members) in an effort to monitor and resolve risks; understands pod and/or team leader's expectations for work and assists in developing strategies for accomplishing the assigned work; participates in all activities with urgency, a results orientation, and strong work ethic.
+
+Give your points that would substantiate your contribution in Delivery & Process (Optional):
+[ ]
+
+B6L — Technical Execution
+
+Expectation:
+Designs robust and extensible product functionality; reviews design with senior team members to come to an agreed-upon solution.
+
+Give your points that would substantiate your contribution in Delivery & Process (Optional):
+[ ]
+
+B6L — Individual
+
+Expectation:
+Acts as a role model, applying project development (e.g., iterative development) and team software development (e.g., detailed testing, code and design reviews, etc.) processes consistently.
+
+Give your points that would substantiate your contribution in Delivery & Process (Optional):
+[ ]
+
+
+---
+
+2. Business & Communication
+
+Section Rating:
+☐ Below ☐ Meets Below ☐ Meets ☐ Meets Above ☐ Above
+
+B7 — Communication
+
+Expectation:
+Demonstrates and expresses written communications properly and concisely.
+
+Give your points that would substantiate your contribution in Business & Communication (Optional):
+[ ]
+
+B7 — Business Scope
+
+Expectation:
+Identifies potential issues and appropriately escalates them to the immediate pod and/or team leader.
+
+Give your points that would substantiate your contribution in Business & Communication (Optional):
+[ ]
+
+B6L — Business Scope
+
+Expectation:
+Demonstrates an understanding of and incorporates practical value with theoretical knowledge to make balanced technical decisions (e.g., design trade-offs, prioritization, etc.), while ensuring the pod and/or team stays aligned to business value.
+
+Give your points that would substantiate your contribution in Business & Communication (Optional):
+[ ]
+
+B6L — Communication
+
+Expectation:
+Demonstrates the ability to communicate clearly and effectively (both verbally and in writing) as well as to defend one's ideas and analysis with members of the pod and/or team.
+
+Give your points that would substantiate your contribution in Business & Communication (Optional):
+[ ]
+
+B6L — Practice Development
+
+Expectation:
+Develops and/or supports the development of Proofs of Concept (POCs).
+
+Give your points that would substantiate your contribution in Business & Communication (Optional):
+[ ]
+
+B6L — Effective Communication
+
+Expectation:
+Gathers and clarifies requirements from various stakeholders (e.g., client, developers, internal Deloitte stakeholders, etc.); participates in client/Deloitte meetings.
+
+Give your points that would substantiate your contribution in Business & Communication (Optional):
+[ ]
+
+
+---
+
+3. Leadership & Organization Contribution
+
+Section Rating:
+☐ Below ☐ Meets Below ☐ Meets ☐ Meets Above ☐ Above
+
+B7 — Role Model
+
+Expectation:
+Works in a self-sufficient manner consistent with a demonstrated proficiency of the "Leads by Example" stage of leadership.
+
+Give your points that would substantiate your contribution in Leadership & Organization Contribution (Optional):
+[ ]
+
+B7 — Challenges & Initiatives
+
+Expectation:
+Participates in challenges and initiatives proactively.
+
+Give your points that would substantiate your contribution in Leadership & Organization Contribution (Optional):
+[ ]
+
+B7 — Organization Contribution
+
+Expectation:
+Participates actively in team and organizational activities.
+
+Give your points that would substantiate your contribution in Leadership & Organization Contribution (Optional):
+[ ]
+
+B6L — Team Leadership
+
+Expectation:
+Assists new pod and/or team members with project onboarding, including any processes and/or technologies used by the team; mentors junior team members and starts to oversee their delivery.
+
+Give your points that would substantiate your contribution in Leadership & Organization Contribution (Optional):
+[ ]
+
+B6L — Cross-Project Oversight
+
+Expectation:
+Contributes technically outside client deliverables and/or project work (e.g., code reviews, POCs, training, etc.).
+
+Give your points that would substantiate your contribution in Leadership & Organization Contribution (Optional):
+[ ]
+
+B6L — Organization Contribution
+
+Expectation:
+Contributes to the organization's environment (e.g., campus recruitment, fun activities, etc.) and supports hiring and creating a fun and engaging environment.
+
+Give your points that would substantiate your contribution in Leadership & Organization Contribution (Optional):
+[ ]
+
+
+---
+
+4. Role Expertise
+
+Section Rating:
+☐ Below ☐ Meets Below ☐ Meets ☐ Meets Above ☐ Above
+
+B7 — Role Proficiency
+
+Expectation:
+Demonstrates ability to implement increasingly complex logic, with attention to code quality and maintainability.
+
+Give your points that would substantiate your contribution in Role Expertise (Optional):
+[ ]
+
+B7 — Learning
+
+Expectation:
+Learns about relevant technologies without needing to be directed by senior team members.
+
+Give your points that would substantiate your contribution in Role Expertise (Optional):
+[ ]
+
+B6L — Problem Solving
+
+Expectation:
+Combines excellent abstract reasoning ability with a strong understanding of core computer science fundamentals (e.g., running-time analysis, data structures, object-oriented design, etc.).
+
+Give your points that would substantiate your contribution in Role Expertise (Optional):
+[ ]
+
+B6L — Role Proficiency
+
+Expectation:
+Demonstrates proficiency in at least one product or technology of strategic importance to Deloitte; incorporates new technologies rapidly as required.
+
+Give your points that would substantiate your contribution in Role Expertise (Optional):
+[ ]
+
+
+---
+
+Structure to give Claude
+
+You can give Claude your complete work/contribution history + the above template and use this instruction:
+
+> Fill this performance review template using my complete work history and contribution history available in the context.
+
+Do not change the section structure or competency names.
+
+Keep the distinction between B7 and B6L exactly as provided.
+
+For every competency, write evidence-based contribution points in the corresponding blank section.
+
+Use only achievements and responsibilities supported by my actual work history. Do not invent metrics, leadership responsibilities, client interactions, or organizational contributions.
+
+Where one achievement can support multiple competencies, tailor the wording to the specific competency rather than unnecessarily repeating the same statement.
+
+Highlight ownership, complexity, technical contribution, quality, delivery, collaboration, problem-solving, and measurable impact wherever supported by evidence.
+
+Keep the writing concise, professional, and suitable for direct submission in Deloitte Feedback Hub.
+
+After filling all competencies, recommend the appropriate section rating among Below / Meets Below / Meets / Meets Above / Above, with a short evidence-based justification.
+
+Also provide an overall assessment of whether the evidence demonstrates strong B7 performance and any evidence relevant to B6L readiness.
